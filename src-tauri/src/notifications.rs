@@ -53,10 +53,32 @@ pub fn message_session_expired() -> NotificationContent {
     )
 }
 
+/// Shown exactly once, ever (persisted via `AppConfig.tray_hint_shown`),
+/// the first time the user closes the settings window — explains that
+/// closing it only hides the window rather than quitting, which a first
+/// run can otherwise read as "the app won't close."
+pub fn message_tray_hint() -> NotificationContent {
+    content(
+        "Minimizado a la bandeja",
+        "Twitch Clip Hotkeys sigue activo. Click derecho en el ícono para salir.",
+    )
+}
+
 #[cfg(test)]
 mod tests {
+    use super::message_tray_hint;
     use crate::clip_flow::ClipOutcome;
     use crate::twitch::ClipRef;
+
+    #[test]
+    fn tray_hint_message() {
+        let content = message_tray_hint();
+        assert_eq!(content.title, "Minimizado a la bandeja");
+        assert_eq!(
+            content.body,
+            "Twitch Clip Hotkeys sigue activo. Click derecho en el ícono para salir."
+        );
+    }
 
     fn clip() -> ClipRef {
         ClipRef {

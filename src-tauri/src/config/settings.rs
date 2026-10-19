@@ -13,6 +13,12 @@ pub struct HotkeyBinding {
 pub struct AppConfig {
     pub client_id: Option<String>,
     pub hotkey_bindings: Vec<HotkeyBinding>,
+    /// Whether `notifications::message_tray_hint` has ever been shown.
+    /// `#[serde(default)]` so a `config.json` written before this field
+    /// existed still deserializes (as `false`, correctly showing the hint
+    /// once more) instead of failing to load entirely.
+    #[serde(default)]
+    pub tray_hint_shown: bool,
 }
 
 #[derive(Debug, Clone, PartialEq)]

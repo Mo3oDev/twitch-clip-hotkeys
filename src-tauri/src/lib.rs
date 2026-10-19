@@ -2,6 +2,7 @@ use std::collections::HashSet;
 use std::sync::{Arc, Mutex as StdMutex};
 
 use tauri::Manager;
+use tauri_plugin_notification::NotificationExt;
 use tokio::sync::Mutex as TokioMutex;
 
 mod auth;
@@ -46,6 +47,7 @@ pub fn run() {
     ));
 
     let hotkey_errors = Arc::new(StdMutex::new(Vec::new()));
+    let tray_hint_shown = Arc::new(StdMutex::new(loaded_config.tray_hint_shown));
 
     let app_state = AppState {
         http: http.clone(),
@@ -98,9 +100,26 @@ pub fn run() {
             // hotkey listener mid-stream. Hide it instead — the tray's
             // "Abrir ajustes" / left-click brings it back (`tray.rs`).
             if let Some(window) = app.get_webview_window("settings") {
-                window.on_window_event(|event| {
+                let app_handle = app.handle().clone();
+                let tray_hint_shown = tray_hint_shown.clone();
+                window.on_window_event(move |event| {
                     if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                         api.prevent_close();
+
+                        let mut shown = tray_hint_shown.lock().unwrap();
+                        if !*shown {
+                            *shown = true;
+                            let content = notifications::message_tray_hint();
+                            let _ = app_handle
+                                .notification()
+                                .builder()
+                                .title(content.title)
+                                .body(content.body)
+                                .show();
+                            let mut config = commands::load_config();
+                            config.tray_hint_shown = true;
+                            let _ = commands::save_config(&config);
+                        }
                     }
                 });
             }
