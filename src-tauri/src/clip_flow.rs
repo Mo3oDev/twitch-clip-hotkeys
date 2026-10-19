@@ -30,7 +30,7 @@ pub trait HelixOps {
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize)]
-#[serde(tag = "type")]
+#[serde(tag = "type", content = "data")]
 pub enum ClipOutcome {
     VodSuccess { clip: ClipRef, duration_seconds: u8 },
     FallbackSuccess { clip: ClipRef },
@@ -137,6 +137,16 @@ async fn usable_vod(
 mod tests {
     use super::*;
     use std::sync::Mutex as StdMutex;
+
+    #[test]
+    fn failed_variant_serializes_with_adjacent_tag() {
+        // Internal tagging (`#[serde(tag = "type")]` alone) cannot serialize
+        // a tuple variant whose payload isn't a map, and silently fails
+        // (swallowed by the `let _ = app.emit(...)` call site) — this would
+        // have dropped every failed-clip event on the frontend floor.
+        let json = serde_json::to_value(ClipOutcome::Failed("boom".to_string())).unwrap();
+        assert_eq!(json, serde_json::json!({"type": "Failed", "data": "boom"}));
+    }
 
     #[derive(Default)]
     struct FakeCalls {
