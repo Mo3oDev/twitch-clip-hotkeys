@@ -39,18 +39,36 @@
 
 .hotkey-row {
   display: flex;
-  gap: 6px;
-  margin-bottom: 6px;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px 0;
+  border-bottom: 1px solid #e5e5e5;
 }
 
-.hotkey-row input {
+.hotkey-row:last-child {
+  border-bottom: none;
+}
+
+.hotkey-row-line {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.hotkey-row-line input {
   flex: 1;
   min-width: 0;
 }
 
-.hotkey-row input[type="number"] {
-  max-width: 64px;
+.hotkey-row-line input[type="number"] {
+  max-width: 48px;
   flex: none;
+}
+
+.hotkey-duration-suffix {
+  font-size: 0.85em;
+  color: #555;
+  margin-right: 4px;
 }
 
 input,
@@ -124,6 +142,14 @@ button:hover {
   }
 
   .hint {
+    color: #aaa;
+  }
+
+  .hotkey-row {
+    border-bottom-color: #444;
+  }
+
+  .hotkey-duration-suffix {
     color: #aaa;
   }
 }

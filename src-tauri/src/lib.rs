@@ -130,12 +130,23 @@ pub fn run() {
             // `AppState` instead so Settings can show it via
             // `get_hotkey_errors` (Review Focus item 2: a reserved combo
             // must surface, not silently look like success).
-            let results = hotkeys::register_all(app.handle(), &setup_bindings.lock().unwrap());
+            let startup_bindings = setup_bindings.lock().unwrap().clone();
+            let results = hotkeys::register_all(app.handle(), &startup_bindings);
             let startup_errors: Vec<commands::HotkeyRegistrationError> = results
                 .into_iter()
                 .filter_map(|(id, r)| {
-                    r.err()
-                        .map(|e| commands::HotkeyRegistrationError { id, message: format!("{e:?}") })
+                    r.err().map(|e| {
+                        let label = startup_bindings
+                            .iter()
+                            .find(|b| b.id == id)
+                            .map(|b| b.label.clone())
+                            .unwrap_or_else(|| id.clone());
+                        commands::HotkeyRegistrationError {
+                            id,
+                            label,
+                            message: format!("{e:?}"),
+                        }
+                    })
                 })
                 .collect();
             *hotkey_errors.lock().unwrap() = startup_errors;

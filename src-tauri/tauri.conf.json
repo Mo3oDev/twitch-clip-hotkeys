@@ -16,8 +16,9 @@
         "label": "settings",
         "title": "Twitch Clip Hotkeys — Ajustes",
         "width": 480,
-        "height": 560,
-        "resizable": false,
+        "height": 640,
+        "minHeight": 400,
+        "resizable": true,
         "visible": false
       }
     ],

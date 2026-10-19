@@ -32,7 +32,9 @@ async function refreshHotkeys(): Promise<void> {
 }
 
 async function refreshHotkeyErrors(): Promise<void> {
-  const errors = await invoke<{ id: string; message: string }[]>("get_hotkey_errors");
+  const errors = await invoke<{ id: string; label: string; message: string }[]>(
+    "get_hotkey_errors",
+  );
   const line = el("hotkey-startup-error");
   if (errors.length === 0) {
     line.classList.add("hidden");
@@ -40,7 +42,7 @@ async function refreshHotkeyErrors(): Promise<void> {
   }
   line.textContent =
     "No se pudieron registrar estos atajos (combinación en uso por otra app): " +
-    errors.map((e) => `${e.id} (${e.message})`).join("; ");
+    errors.map((e) => `${e.label} (${e.message})`).join("; ");
   line.classList.remove("hidden");
 }
 

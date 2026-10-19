@@ -15,7 +15,21 @@ pub struct AuthStatus {
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct HotkeyRegistrationError {
     pub id: String,
+    pub label: String,
     pub message: String,
+}
+
+/// `register_all`'s results are keyed by binding id (Task 9's tested
+/// interface) — resolve it to the user-visible label here, once, so no
+/// user-facing error (frontend or backend `Result<_, String>` text) ever
+/// shows a raw `hk-<timestamp>-<rand>` id, which means nothing to someone
+/// trying to find which row in Settings failed.
+fn label_for<'a>(bindings: &'a [HotkeyBinding], id: &'a str) -> &'a str {
+    bindings
+        .iter()
+        .find(|b| b.id == id)
+        .map(|b| b.label.as_str())
+        .unwrap_or(id)
 }
 
 pub fn validate_before_save(bindings: &[HotkeyBinding]) -> Result<(), String> {
@@ -135,14 +149,14 @@ pub fn save_hotkeys(
     // registration, not after — `register_all`'s own per-binding result
     // only separately covers OS-level refusals (reserved combos) once the
     // binding is already syntactically well-formed.
-    let unparseable: Vec<String> = bindings
+    let unparseable: Vec<&str> = bindings
         .iter()
         .filter(|b| hotkeys::parse_shortcut(b).is_err())
-        .map(|b| b.id.clone())
+        .map(|b| b.label.as_str())
         .collect();
     if !unparseable.is_empty() {
         return Err(format!(
-            "bindings with an invalid key/modifier: {}",
+            "atajos con tecla/modificador inválido: {}",
             unparseable.join(", ")
         ));
     }
@@ -154,20 +168,28 @@ pub fn save_hotkeys(
     *state.bindings.lock().unwrap() = bindings.clone();
 
     let results = hotkeys::register_all(&app, &bindings);
-    store_hotkey_errors(&state, &results);
+    store_hotkey_errors(&state, &bindings, &results);
 
     let failed: Vec<String> = results
         .iter()
-        .filter_map(|(id, r)| r.as_ref().err().map(|e| format!("{id}: {e:?}")))
+        .filter_map(|(id, r)| {
+            r.as_ref()
+                .err()
+                .map(|e| format!("{}: {e:?}", label_for(&bindings, id)))
+        })
         .collect();
     if !failed.is_empty() {
-        return Err(format!("some bindings failed to register: {}", failed.join("; ")));
+        return Err(format!(
+            "algunos atajos no se pudieron registrar: {}",
+            failed.join("; ")
+        ));
     }
     Ok(())
 }
 
 fn store_hotkey_errors(
     state: &State<'_, AppState>,
+    bindings: &[HotkeyBinding],
     results: &[(String, Result<(), hotkeys::HotkeyError>)],
 ) {
     let errors: Vec<HotkeyRegistrationError> = results
@@ -175,6 +197,7 @@ fn store_hotkey_errors(
         .filter_map(|(id, r)| {
             r.as_ref().err().map(|e| HotkeyRegistrationError {
                 id: id.clone(),
+                label: label_for(bindings, id).to_string(),
                 message: format!("{e:?}"),
             })
         })

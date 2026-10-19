@@ -62,9 +62,16 @@ export function renderHotkeyList(
 ): void {
   container.textContent = "";
 
+  // Two stacked lines per binding, not one 5-wide inline row — at the
+  // settings window's fixed (non-resizable) width, five inline inputs
+  // squeezed every field down to roughly the width of its placeholder
+  // text, unreadable even for short values.
   bindings.forEach((binding, index) => {
     const row = document.createElement("div");
     row.className = "hotkey-row";
+
+    const topLine = document.createElement("div");
+    topLine.className = "hotkey-row-line";
 
     const labelInput = document.createElement("input");
     labelInput.value = binding.label;
@@ -73,9 +80,35 @@ export function renderHotkeyList(
       binding.label = labelInput.value;
     });
 
+    const durationInput = document.createElement("input");
+    durationInput.type = "number";
+    durationInput.min = "5";
+    durationInput.max = "60";
+    durationInput.value = String(binding.duration_seconds);
+    durationInput.title = "Duración en segundos (5-60)";
+    durationInput.addEventListener("input", () => {
+      binding.duration_seconds = Number(durationInput.value) || 0;
+    });
+
+    const durationSuffix = document.createElement("span");
+    durationSuffix.className = "hotkey-duration-suffix";
+    durationSuffix.textContent = "s";
+
+    const removeBtn = document.createElement("button");
+    removeBtn.textContent = "Eliminar";
+    removeBtn.addEventListener("click", () => {
+      onStructuralChange(bindings.filter((_, i) => i !== index));
+    });
+
+    topLine.append(labelInput, durationInput, durationSuffix, removeBtn);
+
+    const bottomLine = document.createElement("div");
+    bottomLine.className = "hotkey-row-line";
+
     const modifiersInput = document.createElement("input");
     modifiersInput.value = binding.modifiers.join("+");
     modifiersInput.placeholder = `Modificadores (${KNOWN_MODIFIERS.join("/")})`;
+    modifiersInput.title = `Separados por "+", p. ej. Control+Alt`;
     modifiersInput.addEventListener("input", () => {
       binding.modifiers = modifiersInput.value
         .split("+")
@@ -90,22 +123,9 @@ export function renderHotkeyList(
       binding.code = codeInput.value;
     });
 
-    const durationInput = document.createElement("input");
-    durationInput.type = "number";
-    durationInput.min = "5";
-    durationInput.max = "60";
-    durationInput.value = String(binding.duration_seconds);
-    durationInput.addEventListener("input", () => {
-      binding.duration_seconds = Number(durationInput.value) || 0;
-    });
+    bottomLine.append(modifiersInput, codeInput);
 
-    const removeBtn = document.createElement("button");
-    removeBtn.textContent = "Eliminar";
-    removeBtn.addEventListener("click", () => {
-      onStructuralChange(bindings.filter((_, i) => i !== index));
-    });
-
-    row.append(labelInput, modifiersInput, codeInput, durationInput, removeBtn);
+    row.append(topLine, bottomLine);
     container.appendChild(row);
   });
 }
