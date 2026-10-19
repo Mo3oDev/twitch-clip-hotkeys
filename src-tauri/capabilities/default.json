@@ -5,6 +5,14 @@
   "windows": ["settings"],
   "permissions": [
     "core:default",
-    "opener:default"
+    "global-shortcut:allow-register",
+    "global-shortcut:allow-unregister",
+    "global-shortcut:allow-unregister-all",
+    "notification:default",
+    "notification:allow-notify",
+    "notification:allow-request-permission",
+    "notification:allow-is-permission-granted",
+    "opener:allow-open-url",
+    "store:default"
   ]
 }
