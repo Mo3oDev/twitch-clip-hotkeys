@@ -128,6 +128,17 @@ where
             )
             .await;
 
+            // The in-flight debounce (Task 8) reports a rejected duplicate
+            // press the same way as any other failure — `Failed("already
+            // in flight")`. A rapid double-press is the expected, successful
+            // case (one clip, one notification, from the press that won the
+            // race), not an error; the second press should be silent rather
+            // than show a misleading "couldn't create clip" toast.
+            if matches!(&outcome, clip_flow::ClipOutcome::Failed(msg) if msg == "already in flight")
+            {
+                return;
+            }
+
             // `execute_clip_request` reports a revoked/expired refresh the
             // same way as any other Helix failure (`Failed(format!("{err:?}"))`,
             // see Task 8's ruling) — there is no dedicated outcome variant to

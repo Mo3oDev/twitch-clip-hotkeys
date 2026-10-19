@@ -45,10 +45,20 @@ export function defaultBinding(): HotkeyBinding {
   };
 }
 
+/**
+ * Renders an editable list that mutates `bindings` **in place** as the user
+ * types, without re-rendering on every keystroke. An earlier version called
+ * back into a full re-render (and an immediate `save_hotkeys` + OS
+ * re-registration) on every `input` event — that destroyed the focused
+ * `<input>` each keystroke and persisted half-typed bindings. Field edits
+ * now only mutate the array; `onStructuralChange` fires only for add/remove,
+ * which do need a re-render. The caller is responsible for calling
+ * `save_hotkeys` explicitly (a "Guardar" button), not on every edit.
+ */
 export function renderHotkeyList(
   container: HTMLElement,
   bindings: HotkeyBinding[],
-  onChange: (bindings: HotkeyBinding[]) => void,
+  onStructuralChange: (bindings: HotkeyBinding[]) => void,
 ): void {
   container.textContent = "";
 
@@ -60,31 +70,24 @@ export function renderHotkeyList(
     labelInput.value = binding.label;
     labelInput.placeholder = "Etiqueta";
     labelInput.addEventListener("input", () => {
-      const next = [...bindings];
-      next[index] = { ...binding, label: labelInput.value };
-      onChange(next);
+      binding.label = labelInput.value;
     });
 
     const modifiersInput = document.createElement("input");
     modifiersInput.value = binding.modifiers.join("+");
     modifiersInput.placeholder = `Modificadores (${KNOWN_MODIFIERS.join("/")})`;
     modifiersInput.addEventListener("input", () => {
-      const next = [...bindings];
-      const modifiers = modifiersInput.value
+      binding.modifiers = modifiersInput.value
         .split("+")
         .map((m) => m.trim())
         .filter((m) => m.length > 0);
-      next[index] = { ...binding, modifiers };
-      onChange(next);
     });
 
     const codeInput = document.createElement("input");
     codeInput.value = binding.code;
     codeInput.placeholder = "Código (p. ej. Digit1)";
     codeInput.addEventListener("input", () => {
-      const next = [...bindings];
-      next[index] = { ...binding, code: codeInput.value };
-      onChange(next);
+      binding.code = codeInput.value;
     });
 
     const durationInput = document.createElement("input");
@@ -93,18 +96,13 @@ export function renderHotkeyList(
     durationInput.max = "60";
     durationInput.value = String(binding.duration_seconds);
     durationInput.addEventListener("input", () => {
-      const next = [...bindings];
-      next[index] = {
-        ...binding,
-        duration_seconds: Number(durationInput.value) || 0,
-      };
-      onChange(next);
+      binding.duration_seconds = Number(durationInput.value) || 0;
     });
 
     const removeBtn = document.createElement("button");
     removeBtn.textContent = "Eliminar";
     removeBtn.addEventListener("click", () => {
-      onChange(bindings.filter((_, i) => i !== index));
+      onStructuralChange(bindings.filter((_, i) => i !== index));
     });
 
     row.append(labelInput, modifiersInput, codeInput, durationInput, removeBtn);

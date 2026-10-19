@@ -12,6 +12,12 @@ pub struct AuthStatus {
     pub login: Option<String>,
 }
 
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct HotkeyRegistrationError {
+    pub id: String,
+    pub message: String,
+}
+
 pub fn validate_before_save(bindings: &[HotkeyBinding]) -> Result<(), String> {
     validate_bindings(bindings).map_err(|e| format!("{e:?}"))
 }
@@ -124,6 +130,23 @@ pub fn save_hotkeys(
 ) -> Result<(), String> {
     validate_before_save(&bindings)?;
 
+    // Catch syntactically-invalid combos (unknown key code/modifier, e.g. a
+    // binding half-edited in the UI) *before* persisting or touching the OS
+    // registration, not after — `register_all`'s own per-binding result
+    // only separately covers OS-level refusals (reserved combos) once the
+    // binding is already syntactically well-formed.
+    let unparseable: Vec<String> = bindings
+        .iter()
+        .filter(|b| hotkeys::parse_shortcut(b).is_err())
+        .map(|b| b.id.clone())
+        .collect();
+    if !unparseable.is_empty() {
+        return Err(format!(
+            "bindings with an invalid key/modifier: {}",
+            unparseable.join(", ")
+        ));
+    }
+
     let mut config = load_config();
     config.hotkey_bindings = bindings.clone();
     save_config(&config)?;
@@ -131,10 +154,37 @@ pub fn save_hotkeys(
     *state.bindings.lock().unwrap() = bindings.clone();
 
     let results = hotkeys::register_all(&app, &bindings);
-    if let Some((id, Err(e))) = results.into_iter().find(|(_, r)| r.is_err()) {
-        return Err(format!("binding {id} failed to register: {e:?}"));
+    store_hotkey_errors(&state, &results);
+
+    let failed: Vec<String> = results
+        .iter()
+        .filter_map(|(id, r)| r.as_ref().err().map(|e| format!("{id}: {e:?}")))
+        .collect();
+    if !failed.is_empty() {
+        return Err(format!("some bindings failed to register: {}", failed.join("; ")));
     }
     Ok(())
+}
+
+fn store_hotkey_errors(
+    state: &State<'_, AppState>,
+    results: &[(String, Result<(), hotkeys::HotkeyError>)],
+) {
+    let errors: Vec<HotkeyRegistrationError> = results
+        .iter()
+        .filter_map(|(id, r)| {
+            r.as_ref().err().map(|e| HotkeyRegistrationError {
+                id: id.clone(),
+                message: format!("{e:?}"),
+            })
+        })
+        .collect();
+    *state.hotkey_errors.lock().unwrap() = errors;
+}
+
+#[tauri::command]
+pub fn get_hotkey_errors(state: State<'_, AppState>) -> Vec<HotkeyRegistrationError> {
+    state.hotkey_errors.lock().unwrap().clone()
 }
 
 #[tauri::command]

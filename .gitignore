@@ -15,6 +15,9 @@ dist-ssr
 # Never commit real secrets — see .env.example for the template.
 .env
 
+# Local dev workspace scratch, not shipped product.
+.superpowers/
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

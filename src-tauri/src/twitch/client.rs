@@ -25,14 +25,31 @@ impl HelixClient {
             Ok(value) => Ok(value),
             Err(()) => {
                 // First 401: refresh exactly once, then retry exactly once.
-                let refreshed = crate::auth::refresh::refresh_access_token(
+                // A refresh that fails because Twitch rejected it (revoked/
+                // invalid refresh token) is a real `Unauthorized`; a refresh
+                // that failed to even reach Twitch (offline, DNS, timeout —
+                // see `AUTH_BASE_URL`'s `reqwest` call in `refresh_access_token`)
+                // is a `Network` error, not an auth failure — conflating the
+                // two previously showed "reconnect to Twitch" on a plain
+                // network outage.
+                let mut refreshed = crate::auth::refresh::refresh_access_token(
                     &self.http,
                     &self.auth_base_url,
                     &self.client_id,
                     &tokens.refresh_token,
                 )
                 .await
-                .map_err(|_| HelixError::Unauthorized)?;
+                .map_err(|e| match e {
+                    crate::auth::device_flow::AuthError::Network(msg) => HelixError::Network(msg),
+                    _ => HelixError::Unauthorized,
+                })?;
+                // Twitch's refresh response has no `user_id` field, so
+                // `refresh_access_token` always returns it empty — carry
+                // the pre-refresh value forward, or every downstream
+                // consumer (and the copy persisted to Credential Manager)
+                // ends up with a blank broadcaster id after the first
+                // refresh.
+                refreshed.user_id = tokens.user_id.clone();
                 *tokens = refreshed;
 
                 match self.send_once(tokens, method, path, query).await? {
@@ -168,6 +185,9 @@ mod tests {
 
         assert_eq!(result, serde_json::json!({"data": []}));
         assert_eq!(tok.access_token, "refreshed-token");
+        // Twitch's refresh response has no `user_id` — must be carried
+        // forward from the pre-refresh token, not left blank.
+        assert_eq!(tok.user_id, "u1");
     }
 
     #[tokio::test]

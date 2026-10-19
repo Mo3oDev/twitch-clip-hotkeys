@@ -21,17 +21,35 @@ async function refreshStatus(): Promise<void> {
   renderStatusBadge(el("status-badge"), status);
 }
 
-async function refreshHotkeys(): Promise<void> {
-  currentBindings = await invoke<HotkeyBinding[]>("get_hotkeys");
-  renderHotkeyList(el("hotkey-list"), currentBindings, saveHotkeys);
+function rerenderHotkeys(next: HotkeyBinding[]): void {
+  currentBindings = next;
+  renderHotkeyList(el("hotkey-list"), currentBindings, rerenderHotkeys);
 }
 
-async function saveHotkeys(next: HotkeyBinding[]): Promise<void> {
-  currentBindings = next;
-  renderHotkeyList(el("hotkey-list"), currentBindings, saveHotkeys);
+async function refreshHotkeys(): Promise<void> {
+  currentBindings = await invoke<HotkeyBinding[]>("get_hotkeys");
+  renderHotkeyList(el("hotkey-list"), currentBindings, rerenderHotkeys);
+}
 
+async function refreshHotkeyErrors(): Promise<void> {
+  const errors = await invoke<{ id: string; message: string }[]>("get_hotkey_errors");
+  const line = el("hotkey-startup-error");
+  if (errors.length === 0) {
+    line.classList.add("hidden");
+    return;
+  }
+  line.textContent =
+    "No se pudieron registrar estos atajos (combinación en uso por otra app): " +
+    errors.map((e) => `${e.id} (${e.message})`).join("; ");
+  line.classList.remove("hidden");
+}
+
+// Saves the current in-memory draft (`renderHotkeyList` mutates it in
+// place as the user types, without re-rendering or auto-saving per
+// keystroke — see that module's comment for why).
+async function saveCurrentHotkeys(): Promise<void> {
   const errorLine = el("hotkey-error");
-  const clientError = validateClientSide(next);
+  const clientError = validateClientSide(currentBindings);
   if (clientError) {
     errorLine.textContent = clientError;
     errorLine.classList.remove("hidden");
@@ -39,12 +57,13 @@ async function saveHotkeys(next: HotkeyBinding[]): Promise<void> {
   }
 
   try {
-    await invoke("save_hotkeys", { bindings: next });
+    await invoke("save_hotkeys", { bindings: currentBindings });
     errorLine.classList.add("hidden");
   } catch (err) {
     errorLine.textContent = String(err);
     errorLine.classList.remove("hidden");
   }
+  await refreshHotkeyErrors();
 }
 
 function setDiagnostic(text: string): void {
@@ -75,6 +94,7 @@ function describeClipOutcome(outcome: { type: string; data?: unknown }): string 
 window.addEventListener("DOMContentLoaded", async () => {
   await refreshStatus();
   await refreshHotkeys();
+  await refreshHotkeyErrors();
 
   el<HTMLInputElement>("client-id").value =
     (await invoke<string | null>("get_client_id")) ?? "";
@@ -98,8 +118,10 @@ window.addEventListener("DOMContentLoaded", async () => {
   });
 
   el("add-hotkey-btn").addEventListener("click", () => {
-    saveHotkeys([...currentBindings, defaultBinding()]);
+    rerenderHotkeys([...currentBindings, defaultBinding()]);
   });
+
+  el("save-hotkeys-btn").addEventListener("click", saveCurrentHotkeys);
 
   await listen<string>("auth:user_code", (event) => {
     const line = el("user-code-line");
