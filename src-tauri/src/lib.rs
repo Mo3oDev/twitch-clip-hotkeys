@@ -7,6 +7,7 @@ mod auth;
 mod clip_flow;
 mod config;
 mod hotkeys;
+mod notifications;
 mod twitch;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
