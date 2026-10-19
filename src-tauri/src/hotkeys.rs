@@ -1,7 +1,18 @@
 use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
+use tauri_plugin_notification::NotificationExt;
 
 use crate::clip_flow::{self, HelixOps};
 use crate::config::HotkeyBinding;
+use crate::notifications;
+
+/// The streamer identity a hotkey press clips against — only present once
+/// login has completed. `broadcaster_id` and `editor_id` are the same
+/// value (the logged-in user clips their own channel).
+#[derive(Debug, Clone)]
+pub struct ActiveSession {
+    pub broadcaster_id: String,
+    pub editor_id: String,
+}
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum HotkeyError {
@@ -64,8 +75,7 @@ pub fn register_all(
 /// task so the global keyboard hook is never blocked.
 pub fn build_plugin<O, R>(
     ops: std::sync::Arc<O>,
-    broadcaster_id: String,
-    editor_id: String,
+    session: std::sync::Arc<std::sync::Mutex<Option<ActiveSession>>>,
     bindings: std::sync::Arc<std::sync::Mutex<Vec<HotkeyBinding>>>,
     in_flight: std::sync::Arc<tokio::sync::Mutex<std::collections::HashSet<String>>>,
 ) -> tauri_plugin_global_shortcut::Builder<R>
@@ -91,22 +101,51 @@ where
             return;
         };
 
+        let active = session.lock().unwrap().clone();
+        let Some(active) = active else {
+            let content = notifications::message_not_connected();
+            let _ = app
+                .notification()
+                .builder()
+                .title(content.title)
+                .body(content.body)
+                .show();
+            let _ = app.emit("auth:required", ());
+            return;
+        };
+
         let ops = ops.clone();
-        let broadcaster_id = broadcaster_id.clone();
-        let editor_id = editor_id.clone();
         let in_flight = in_flight.clone();
         let app = app.clone();
         tauri::async_runtime::spawn(async move {
             let outcome = clip_flow::execute_clip_request(
                 ops.as_ref(),
-                &broadcaster_id,
-                &editor_id,
+                &active.broadcaster_id,
+                &active.editor_id,
                 &binding,
                 chrono::Utc::now(),
                 &in_flight,
             )
             .await;
-            let _ = app.emit("clip:result", outcome);
+
+            // `execute_clip_request` reports a revoked/expired refresh the
+            // same way as any other Helix failure (`Failed(format!("{err:?}"))`,
+            // see Task 8's ruling) — there is no dedicated outcome variant to
+            // match on, so the one case needing different copy is recovered
+            // by inspecting the debug text it produces for `HelixError::Unauthorized`.
+            let content = match &outcome {
+                clip_flow::ClipOutcome::Failed(msg) if msg.contains("Unauthorized") => {
+                    notifications::message_session_expired()
+                }
+                other => notifications::message_for_outcome(other),
+            };
+            let _ = app
+                .notification()
+                .builder()
+                .title(content.title)
+                .body(content.body)
+                .show();
+            let _ = app.emit("clip:result", &outcome);
         });
     })
 }

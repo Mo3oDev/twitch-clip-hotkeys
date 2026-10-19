@@ -1,4 +1,4 @@
 pub mod paths;
 pub mod settings;
 
-pub use settings::{AppConfig, HotkeyBinding, ValidationError};
+pub use settings::{validate_bindings, AppConfig, HotkeyBinding, ValidationError};
