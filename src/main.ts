@@ -49,6 +49,9 @@ async function refreshHotkeyErrors(): Promise<void> {
 // keystroke — see that module's comment for why).
 async function saveCurrentHotkeys(): Promise<void> {
   const errorLine = el("hotkey-error");
+  const statusLine = el("hotkey-save-status");
+  statusLine.classList.add("hidden");
+
   const clientError = validateClientSide(currentBindings);
   if (clientError) {
     errorLine.textContent = clientError;
@@ -59,6 +62,8 @@ async function saveCurrentHotkeys(): Promise<void> {
   try {
     await invoke("save_hotkeys", { bindings: currentBindings });
     errorLine.classList.add("hidden");
+    statusLine.textContent = "Guardado.";
+    statusLine.classList.remove("hidden");
   } catch (err) {
     errorLine.textContent = String(err);
     errorLine.classList.remove("hidden");
@@ -101,7 +106,15 @@ window.addEventListener("DOMContentLoaded", async () => {
 
   el("save-client-id").addEventListener("click", async () => {
     const id = el<HTMLInputElement>("client-id").value.trim();
-    await invoke("set_client_id", { id });
+    const status = el("client-id-status");
+    try {
+      await invoke("set_client_id", { id });
+      status.textContent = "Guardado.";
+      status.classList.remove("hidden");
+    } catch (err) {
+      status.textContent = `Error: ${String(err)}`;
+      status.classList.remove("hidden");
+    }
   });
 
   el("connect-btn").addEventListener("click", async () => {

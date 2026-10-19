@@ -61,6 +61,18 @@ pub fn run() {
     let login_ops = ops.clone();
 
     tauri::Builder::default()
+        // Must be the first plugin registered: a second launch is detected
+        // here and forwarded to this callback in the *first* instance
+        // instead of starting a second process — without this, each launch
+        // of the installed app (or `tauri dev`) silently ran as its own
+        // independent background instance, each registering its own copy
+        // of the same global hotkeys and racing to refresh the same token.
+        .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
+            if let Some(window) = app.get_webview_window("settings") {
+                let _ = window.show();
+                let _ = window.set_focus();
+            }
+        }))
         .plugin(tauri_plugin_store::Builder::new().build())
         .plugin(tauri_plugin_notification::init())
         .plugin(
