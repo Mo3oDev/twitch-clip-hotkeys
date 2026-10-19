@@ -1,22 +1,127 @@
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
+import { renderStatusBadge, type AuthStatus } from "./components/statusBadge";
+import {
+  renderHotkeyList,
+  validateClientSide,
+  defaultBinding,
+  type HotkeyBinding,
+} from "./components/hotkeyList";
 
-let greetInputEl: HTMLInputElement | null;
-let greetMsgEl: HTMLElement | null;
+let currentBindings: HotkeyBinding[] = [];
 
-async function greet() {
-  if (greetMsgEl && greetInputEl) {
-    // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
-    greetMsgEl.textContent = await invoke("greet", {
-      name: greetInputEl.value,
-    });
+function el<T extends HTMLElement>(id: string): T {
+  const found = document.getElementById(id);
+  if (!found) throw new Error(`missing element #${id}`);
+  return found as T;
+}
+
+async function refreshStatus(): Promise<void> {
+  const status = await invoke<AuthStatus>("auth_status");
+  renderStatusBadge(el("status-badge"), status);
+}
+
+async function refreshHotkeys(): Promise<void> {
+  currentBindings = await invoke<HotkeyBinding[]>("get_hotkeys");
+  renderHotkeyList(el("hotkey-list"), currentBindings, saveHotkeys);
+}
+
+async function saveHotkeys(next: HotkeyBinding[]): Promise<void> {
+  currentBindings = next;
+  renderHotkeyList(el("hotkey-list"), currentBindings, saveHotkeys);
+
+  const errorLine = el("hotkey-error");
+  const clientError = validateClientSide(next);
+  if (clientError) {
+    errorLine.textContent = clientError;
+    errorLine.classList.remove("hidden");
+    return;
+  }
+
+  try {
+    await invoke("save_hotkeys", { bindings: next });
+    errorLine.classList.add("hidden");
+  } catch (err) {
+    errorLine.textContent = String(err);
+    errorLine.classList.remove("hidden");
   }
 }
 
-window.addEventListener("DOMContentLoaded", () => {
-  greetInputEl = document.querySelector("#greet-input");
-  greetMsgEl = document.querySelector("#greet-msg");
-  document.querySelector("#greet-form")?.addEventListener("submit", (e) => {
-    e.preventDefault();
-    greet();
+function setDiagnostic(text: string): void {
+  el("diagnostic-line").textContent = text;
+}
+
+function describeClipOutcome(outcome: { type: string; data?: unknown }): string {
+  switch (outcome.type) {
+    case "VodSuccess": {
+      const data = outcome.data as { duration_seconds: number };
+      return `Clip creado (${data.duration_seconds}s, duración exacta).`;
+    }
+    case "FallbackSuccess":
+      return "Clip creado (duración aproximada, método alterno).";
+    case "StillProcessing":
+      return "Clip en proceso, puede tardar un poco más en aparecer.";
+    case "Offline":
+      return "El stream está offline, no se creó ningún clip.";
+    case "Failed": {
+      const message = outcome.data as string;
+      return `Último error: ${message}`;
+    }
+    default:
+      return "Evento de clip desconocido.";
+  }
+}
+
+window.addEventListener("DOMContentLoaded", async () => {
+  await refreshStatus();
+  await refreshHotkeys();
+
+  el<HTMLInputElement>("client-id").value =
+    (await invoke<string | null>("get_client_id")) ?? "";
+
+  el("save-client-id").addEventListener("click", async () => {
+    const id = el<HTMLInputElement>("client-id").value.trim();
+    await invoke("set_client_id", { id });
+  });
+
+  el("connect-btn").addEventListener("click", async () => {
+    try {
+      await invoke("auth_login");
+    } catch (err) {
+      setDiagnostic(`No se pudo conectar: ${String(err)}`);
+    }
+  });
+
+  el("disconnect-btn").addEventListener("click", async () => {
+    await invoke("auth_logout");
+    await refreshStatus();
+  });
+
+  el("add-hotkey-btn").addEventListener("click", () => {
+    saveHotkeys([...currentBindings, defaultBinding()]);
+  });
+
+  await listen<string>("auth:user_code", (event) => {
+    const line = el("user-code-line");
+    line.textContent = `Código de verificación: ${event.payload} (se abrió en tu navegador)`;
+    line.classList.remove("hidden");
+  });
+
+  await listen<string>("auth:success", async () => {
+    el("user-code-line").classList.add("hidden");
+    await refreshStatus();
+  });
+
+  await listen<string>("auth:timeout", (event) => {
+    setDiagnostic(`Conexión con Twitch falló: ${event.payload}`);
+    el("user-code-line").classList.add("hidden");
+  });
+
+  await listen("auth:required", () => {
+    setDiagnostic("Twitch no conectado. Abre Ajustes y conecta tu cuenta.");
+  });
+
+  await listen<{ type: string; data?: unknown }>("clip:result", (event) => {
+    setDiagnostic(describeClipOutcome(event.payload));
   });
 });
