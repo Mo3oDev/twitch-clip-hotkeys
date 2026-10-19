@@ -58,6 +58,7 @@ pub fn save_config(config: &AppConfig) -> Result<(), String> {
 
 #[tauri::command]
 pub async fn auth_login(state: State<'_, AppState>, app: AppHandle) -> Result<(), String> {
+    log::info!("auth_login: starting device code flow");
     let client_id = state
         .client_id
         .lock()
@@ -68,7 +69,10 @@ pub async fn auth_login(state: State<'_, AppState>, app: AppHandle) -> Result<()
 
     let device = device_flow::start_device_flow(&http, AUTH_BASE_URL, &client_id, SCOPES)
         .await
-        .map_err(|e| format!("{e:?}"))?;
+        .map_err(|e| {
+            log::error!("auth_login: start_device_flow failed: {e:?}");
+            format!("{e:?}")
+        })?;
 
     let _ = app.emit("auth:user_code", &device.user_code);
     let _ = tauri_plugin_opener::open_url(device.verification_uri.clone(), None::<&str>);
@@ -93,7 +97,10 @@ pub async fn auth_login(state: State<'_, AppState>, app: AppHandle) -> Result<()
             };
             let user = crate::twitch::users::get_current_user(&client, &mut tokens)
                 .await
-                .map_err(|e| format!("{e:?}"))?;
+                .map_err(|e| {
+                    log::error!("auth_login: get_current_user failed after token poll: {e:?}");
+                    format!("{e:?}")
+                })?;
             tokens.user_id = user.id.clone();
 
             let _ = auth::token_store::save_tokens(KEYRING_SERVICE, &tokens);
@@ -105,10 +112,12 @@ pub async fn auth_login(state: State<'_, AppState>, app: AppHandle) -> Result<()
                 editor_id: user.id,
             });
 
+            log::info!("auth_login: connected as '{}'", user.login);
             let _ = app.emit("auth:success", &user.login);
             Ok(())
         }
         Err(e) => {
+            log::warn!("auth_login: device code poll did not complete: {e:?}");
             let _ = app.emit("auth:timeout", format!("{e:?}"));
             Err(format!("{e:?}"))
         }
@@ -117,6 +126,7 @@ pub async fn auth_login(state: State<'_, AppState>, app: AppHandle) -> Result<()
 
 #[tauri::command]
 pub fn auth_logout(state: State<'_, AppState>) -> Result<(), String> {
+    log::info!("auth_logout: disconnecting");
     *state.user_login.lock().unwrap() = None;
     *state.session.lock().unwrap() = None;
     auth::token_store::clear_tokens(KEYRING_SERVICE).map_err(|e| format!("{e:?}"))
@@ -155,6 +165,7 @@ pub fn save_hotkeys(
         .map(|b| b.label.as_str())
         .collect();
     if !unparseable.is_empty() {
+        log::warn!("save_hotkeys: rejected unparseable bindings: {}", unparseable.join(", "));
         return Err(format!(
             "atajos con tecla/modificador inválido: {}",
             unparseable.join(", ")
@@ -179,11 +190,13 @@ pub fn save_hotkeys(
         })
         .collect();
     if !failed.is_empty() {
+        log::warn!("save_hotkeys: registration failures: {}", failed.join("; "));
         return Err(format!(
             "algunos atajos no se pudieron registrar: {}",
             failed.join("; ")
         ));
     }
+    log::info!("save_hotkeys: saved and registered {} binding(s)", bindings.len());
     Ok(())
 }
 

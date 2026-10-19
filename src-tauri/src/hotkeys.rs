@@ -103,6 +103,7 @@ where
 
         let active = session.lock().unwrap().clone();
         let Some(active) = active else {
+            log::warn!("hotkey '{}' pressed while not connected", binding.label);
             let content = notifications::message_not_connected();
             let _ = app
                 .notification()
@@ -113,6 +114,8 @@ where
             let _ = app.emit("auth:required", ());
             return;
         };
+
+        log::info!("hotkey '{}' pressed, requesting clip", binding.label);
 
         let ops = ops.clone();
         let in_flight = in_flight.clone();
@@ -136,7 +139,17 @@ where
             // than show a misleading "couldn't create clip" toast.
             if matches!(&outcome, clip_flow::ClipOutcome::Failed(msg) if msg == "already in flight")
             {
+                log::debug!("hotkey '{}' debounced (already in flight)", binding.label);
                 return;
+            }
+
+            match &outcome {
+                clip_flow::ClipOutcome::Failed(msg) => {
+                    log::error!("hotkey '{}' clip request failed: {msg}", binding.label);
+                }
+                other => {
+                    log::info!("hotkey '{}' clip request resolved: {other:?}", binding.label);
+                }
             }
 
             // `execute_clip_request` reports a revoked/expired refresh the

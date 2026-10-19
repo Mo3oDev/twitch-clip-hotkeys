@@ -70,11 +70,29 @@ pub fn run() {
         // independent background instance, each registering its own copy
         // of the same global hotkeys and racing to refresh the same token.
         .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
+            log::info!("second launch detected, focusing existing settings window");
             if let Some(window) = app.get_webview_window("settings") {
                 let _ = window.show();
                 let _ = window.set_focus();
             }
         }))
+        // Also second-from-first: a release build has no console
+        // (`main.rs`'s `windows_subsystem = "windows"`), so this is the
+        // only place runtime errors are ever recorded for an installed
+        // app — writes to `%APPDATA%/<identifier>/logs/*.log`. Never log
+        // `TokenSet` or its fields (access/refresh token) here — only
+        // ids, outcomes and error *kinds*.
+        .plugin(
+            tauri_plugin_log::Builder::new()
+                .target(tauri_plugin_log::Target::new(
+                    tauri_plugin_log::TargetKind::LogDir { file_name: None },
+                ))
+                .target(tauri_plugin_log::Target::new(
+                    tauri_plugin_log::TargetKind::Stdout,
+                ))
+                .level(log::LevelFilter::Info)
+                .build(),
+        )
         .plugin(tauri_plugin_store::Builder::new().build())
         .plugin(tauri_plugin_notification::init())
         .plugin(
@@ -131,6 +149,7 @@ pub fn run() {
             // `get_hotkey_errors` (Review Focus item 2: a reserved combo
             // must surface, not silently look like success).
             let startup_bindings = setup_bindings.lock().unwrap().clone();
+            log::info!("registering {} hotkey binding(s) at startup", startup_bindings.len());
             let results = hotkeys::register_all(app.handle(), &startup_bindings);
             let startup_errors: Vec<commands::HotkeyRegistrationError> = results
                 .into_iter()
@@ -141,6 +160,7 @@ pub fn run() {
                             .find(|b| b.id == id)
                             .map(|b| b.label.clone())
                             .unwrap_or_else(|| id.clone());
+                        log::warn!("hotkey '{label}' ({id}) failed to register at startup: {e:?}");
                         commands::HotkeyRegistrationError {
                             id,
                             label,
