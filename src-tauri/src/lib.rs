@@ -4,6 +4,7 @@ use tauri::{
 };
 
 mod auth;
+mod clip_flow;
 mod config;
 mod twitch;
 
