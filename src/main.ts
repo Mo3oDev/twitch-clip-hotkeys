@@ -19,6 +19,8 @@ function el<T extends HTMLElement>(id: string): T {
 async function refreshStatus(): Promise<void> {
   const status = await invoke<AuthStatus>("auth_status");
   renderStatusBadge(el("status-badge"), status);
+  el<HTMLButtonElement>("connect-btn").disabled = status.connected;
+  el<HTMLButtonElement>("disconnect-btn").disabled = !status.connected;
 }
 
 function rerenderHotkeys(next: HotkeyBinding[]): void {
@@ -120,16 +122,33 @@ window.addEventListener("DOMContentLoaded", async () => {
   });
 
   el("connect-btn").addEventListener("click", async () => {
+    const btn = el<HTMLButtonElement>("connect-btn");
+    // Disabled synchronously before the first await — prevents a second
+    // click from starting a second, parallel device-flow login while this
+    // one (which can wait up to the device code's full expiry, ~30 min) is
+    // still polling. `refreshStatus` in `finally` is the single source of
+    // truth for the final disabled state on both buttons, whether login
+    // succeeded, failed, or timed out.
+    btn.disabled = true;
+    btn.textContent = "Conectando...";
     try {
       await invoke("auth_login");
     } catch (err) {
       setDiagnostic(`No se pudo conectar: ${String(err)}`);
+    } finally {
+      btn.textContent = "Conectar con Twitch";
+      await refreshStatus();
     }
   });
 
   el("disconnect-btn").addEventListener("click", async () => {
-    await invoke("auth_logout");
-    await refreshStatus();
+    const btn = el<HTMLButtonElement>("disconnect-btn");
+    btn.disabled = true;
+    try {
+      await invoke("auth_logout");
+    } finally {
+      await refreshStatus();
+    }
   });
 
   el("add-hotkey-btn").addEventListener("click", () => {
