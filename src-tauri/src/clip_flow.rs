@@ -29,7 +29,8 @@ pub trait HelixOps {
     ) -> impl std::future::Future<Output = Result<Option<ClipRef>, HelixError>> + Send;
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
+#[serde(tag = "type")]
 pub enum ClipOutcome {
     VodSuccess { clip: ClipRef, duration_seconds: u8 },
     FallbackSuccess { clip: ClipRef },
