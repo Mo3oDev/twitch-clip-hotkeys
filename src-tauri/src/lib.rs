@@ -5,6 +5,7 @@ use tauri::{
 
 mod auth;
 mod config;
+mod twitch;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {

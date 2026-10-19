@@ -1,0 +1,226 @@
+#[derive(Debug, Clone, PartialEq)]
+pub enum HelixError {
+    Unauthorized,
+    RateLimited,
+    Network(String),
+    Api(String),
+}
+
+pub struct HelixClient {
+    pub http: reqwest::Client,
+    pub base_url: String,
+    pub client_id: String,
+    pub auth_base_url: String,
+}
+
+impl HelixClient {
+    pub async fn request(
+        &self,
+        tokens: &mut crate::auth::TokenSet,
+        method: reqwest::Method,
+        path: &str,
+        query: &[(&str, &str)],
+    ) -> Result<serde_json::Value, HelixError> {
+        match self.send_once(tokens, method.clone(), path, query).await? {
+            Ok(value) => Ok(value),
+            Err(()) => {
+                // First 401: refresh exactly once, then retry exactly once.
+                let refreshed = crate::auth::refresh::refresh_access_token(
+                    &self.http,
+                    &self.auth_base_url,
+                    &self.client_id,
+                    &tokens.refresh_token,
+                )
+                .await
+                .map_err(|_| HelixError::Unauthorized)?;
+                *tokens = refreshed;
+
+                match self.send_once(tokens, method, path, query).await? {
+                    Ok(value) => Ok(value),
+                    Err(()) => Err(HelixError::Unauthorized),
+                }
+            }
+        }
+    }
+
+    /// Sends one request. `Ok(Err(()))` signals "got a 401, caller decides
+    /// whether to retry" without treating it as a hard error yet.
+    async fn send_once(
+        &self,
+        tokens: &crate::auth::TokenSet,
+        method: reqwest::Method,
+        path: &str,
+        query: &[(&str, &str)],
+    ) -> Result<Result<serde_json::Value, ()>, HelixError> {
+        let response = self
+            .http
+            .request(method, format!("{}{}", self.base_url, path))
+            .header("Client-Id", &self.client_id)
+            .header("Authorization", format!("Bearer {}", tokens.access_token))
+            .query(query)
+            .send()
+            .await
+            .map_err(|e| HelixError::Network(e.to_string()))?;
+
+        match response.status().as_u16() {
+            401 => Ok(Err(())),
+            429 => Err(HelixError::RateLimited),
+            200..=299 => response
+                .json::<serde_json::Value>()
+                .await
+                .map_err(|e| HelixError::Network(e.to_string()))
+                .map(Ok),
+            _ => {
+                let body = response.text().await.unwrap_or_default();
+                Err(HelixError::Api(body))
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::auth::TokenSet;
+    use wiremock::matchers::{header, method, path};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    fn tokens(access_token: &str) -> TokenSet {
+        TokenSet {
+            access_token: access_token.to_string(),
+            refresh_token: "r".to_string(),
+            expires_at: 0,
+            scope: vec!["clips:edit".to_string()],
+            user_id: "u1".to_string(),
+        }
+    }
+
+    fn client(helix: &MockServer, auth: &MockServer) -> HelixClient {
+        HelixClient {
+            http: reqwest::Client::new(),
+            base_url: helix.uri(),
+            client_id: "client123".to_string(),
+            auth_base_url: auth.uri(),
+        }
+    }
+
+    #[tokio::test]
+    async fn passes_through_200() {
+        let helix = MockServer::start().await;
+        let auth = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/helix/users"))
+            .and(header("Client-Id", "client123"))
+            .and(header("Authorization", "Bearer good-token"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({"data": []})))
+            .expect(1)
+            .mount(&helix)
+            .await;
+
+        let c = client(&helix, &auth);
+        let mut tok = tokens("good-token");
+        let result = c
+            .request(&mut tok, reqwest::Method::GET, "/helix/users", &[])
+            .await
+            .unwrap();
+
+        assert_eq!(result, serde_json::json!({"data": []}));
+    }
+
+    #[tokio::test]
+    async fn retries_once_after_401_then_succeeds() {
+        let helix = MockServer::start().await;
+        let auth = MockServer::start().await;
+
+        Mock::given(method("GET"))
+            .and(path("/helix/users"))
+            .and(header("Authorization", "Bearer old-token"))
+            .respond_with(ResponseTemplate::new(401))
+            .expect(1)
+            .mount(&helix)
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/helix/users"))
+            .and(header("Authorization", "Bearer refreshed-token"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({"data": []})))
+            .expect(1)
+            .mount(&helix)
+            .await;
+        Mock::given(method("POST"))
+            .and(path("/oauth2/token"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "access_token": "refreshed-token",
+                "refresh_token": "new-refresh",
+                "expires_in": 14820,
+                "scope": ["clips:edit"],
+                "token_type": "bearer"
+            })))
+            .expect(1)
+            .mount(&auth)
+            .await;
+
+        let c = client(&helix, &auth);
+        let mut tok = tokens("old-token");
+        let result = c
+            .request(&mut tok, reqwest::Method::GET, "/helix/users", &[])
+            .await
+            .unwrap();
+
+        assert_eq!(result, serde_json::json!({"data": []}));
+        assert_eq!(tok.access_token, "refreshed-token");
+    }
+
+    #[tokio::test]
+    async fn gives_up_after_second_401() {
+        let helix = MockServer::start().await;
+        let auth = MockServer::start().await;
+
+        Mock::given(method("GET"))
+            .and(path("/helix/users"))
+            .respond_with(ResponseTemplate::new(401))
+            .expect(2)
+            .mount(&helix)
+            .await;
+        Mock::given(method("POST"))
+            .and(path("/oauth2/token"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "access_token": "refreshed-token",
+                "refresh_token": "new-refresh",
+                "expires_in": 14820,
+                "scope": ["clips:edit"],
+                "token_type": "bearer"
+            })))
+            .expect(1)
+            .mount(&auth)
+            .await;
+
+        let c = client(&helix, &auth);
+        let mut tok = tokens("old-token");
+        let result = c
+            .request(&mut tok, reqwest::Method::GET, "/helix/users", &[])
+            .await;
+
+        assert_eq!(result, Err(HelixError::Unauthorized));
+    }
+
+    #[tokio::test]
+    async fn maps_429_to_rate_limited() {
+        let helix = MockServer::start().await;
+        let auth = MockServer::start().await;
+
+        Mock::given(method("GET"))
+            .and(path("/helix/users"))
+            .respond_with(ResponseTemplate::new(429))
+            .expect(1)
+            .mount(&helix)
+            .await;
+
+        let c = client(&helix, &auth);
+        let mut tok = tokens("good-token");
+        let result = c
+            .request(&mut tok, reqwest::Method::GET, "/helix/users", &[])
+            .await;
+
+        assert_eq!(result, Err(HelixError::RateLimited));
+    }
+}
