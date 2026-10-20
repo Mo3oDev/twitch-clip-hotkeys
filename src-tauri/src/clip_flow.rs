@@ -1,6 +1,6 @@
-use std::collections::HashSet;
+use std::collections::HashMap;
 
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, Duration, Utc};
 use tokio::sync::Mutex;
 
 use crate::config::HotkeyBinding;
@@ -73,28 +73,35 @@ pub enum ClipOutcome {
     Failed(String),
 }
 
+/// Rapid repeated presses of the same binding — a nervous double-tap during
+/// a hype moment, not just literal overlap — used to be allowed the instant
+/// the previous request *finished*, which for a fast VOD-path success could
+/// be well under a second. A fixed cooldown measured from the *start* of
+/// the last accepted press (using the same injected `now` as the VOD-offset
+/// math, so this stays deterministically testable) also subsumes the old
+/// in-flight check: a still-running request's start time is always within
+/// the cooldown window of "now".
+const CLIP_COOLDOWN: Duration = Duration::seconds(10);
+
 pub async fn execute_clip_request(
     ops: &impl HelixOps,
     broadcaster_id: &str,
     editor_id: &str,
     binding: &HotkeyBinding,
     now: DateTime<Utc>,
-    in_flight: &Mutex<HashSet<String>>,
+    cooldowns: &Mutex<HashMap<String, DateTime<Utc>>>,
 ) -> ClipOutcome {
     {
-        let mut guard = in_flight.lock().await;
-        if guard.contains(&binding.id) {
-            return ClipOutcome::Failed("already in flight".to_string());
+        let mut guard = cooldowns.lock().await;
+        if let Some(last) = guard.get(&binding.id) {
+            if now.signed_duration_since(*last) < CLIP_COOLDOWN {
+                return ClipOutcome::Failed("cooldown".to_string());
+            }
         }
-        guard.insert(binding.id.clone());
+        guard.insert(binding.id.clone(), now);
     }
 
-    let outcome =
-        execute_clip_request_inner(ops, broadcaster_id, editor_id, binding, now).await;
-
-    in_flight.lock().await.remove(&binding.id);
-
-    outcome
+    execute_clip_request_inner(ops, broadcaster_id, editor_id, binding, now).await
 }
 
 async fn execute_clip_request_inner(
@@ -288,8 +295,8 @@ mod tests {
     }
 
     async fn run(ops: &FakeOps, binding: &HotkeyBinding, now: DateTime<Utc>) -> ClipOutcome {
-        let in_flight = Mutex::new(HashSet::new());
-        execute_clip_request(ops, "141981764", "141981764", binding, now, &in_flight).await
+        let cooldowns = Mutex::new(HashMap::new());
+        execute_clip_request(ops, "141981764", "141981764", binding, now, &cooldowns).await
     }
 
     #[tokio::test]
@@ -472,13 +479,17 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn in_flight_binding_is_rejected_without_calling_ops() {
+    async fn binding_pressed_again_within_cooldown_is_rejected_without_calling_ops() {
         let ops = FakeOps::default();
         let the_binding = binding(30);
-        let in_flight = Mutex::new(HashSet::from([the_binding.id.clone()]));
+        // Pressed 3s ago — inside the 10s cooldown.
+        let cooldowns = Mutex::new(HashMap::from([(
+            the_binding.id.clone(),
+            now() - Duration::seconds(3),
+        )]));
 
         let outcome =
-            execute_clip_request(&ops, "141981764", "141981764", &the_binding, now(), &in_flight)
+            execute_clip_request(&ops, "141981764", "141981764", &the_binding, now(), &cooldowns)
                 .await;
 
         assert!(matches!(outcome, ClipOutcome::Failed(_)));
@@ -487,5 +498,28 @@ mod tests {
         assert_eq!(calls.get_current_vod, 0);
         assert_eq!(calls.create_clip_from_vod, 0);
         assert_eq!(calls.create_clip_classic, 0);
+    }
+
+    #[tokio::test]
+    async fn binding_pressed_after_cooldown_elapsed_is_allowed() {
+        let ops = FakeOps::default();
+        let the_binding = binding(45);
+        // Pressed 11s ago — just past the 10s cooldown.
+        let cooldowns = Mutex::new(HashMap::from([(
+            the_binding.id.clone(),
+            now() - Duration::seconds(11),
+        )]));
+
+        let outcome =
+            execute_clip_request(&ops, "141981764", "141981764", &the_binding, now(), &cooldowns)
+                .await;
+
+        assert_eq!(
+            outcome,
+            ClipOutcome::VodSuccess {
+                clip: ops.vod_clip.clone().unwrap(),
+                duration_seconds: 45,
+            }
+        );
     }
 }

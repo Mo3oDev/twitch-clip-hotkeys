@@ -24,14 +24,22 @@ async function refreshStatus(): Promise<void> {
   el<HTMLButtonElement>("disconnect-btn").disabled = !status.connected;
 }
 
+// While a combo is being captured, adding or saving hotkeys would either
+// abandon the pending capture silently or save a half-set binding — both
+// buttons are disabled for the duration.
+function setHotkeyControlsDisabled(disabled: boolean): void {
+  el<HTMLButtonElement>("add-hotkey-btn").disabled = disabled;
+  el<HTMLButtonElement>("save-hotkeys-btn").disabled = disabled;
+}
+
 function rerenderHotkeys(next: HotkeyBinding[]): void {
   currentBindings = next;
-  renderHotkeyList(el("hotkey-list"), currentBindings, rerenderHotkeys);
+  renderHotkeyList(el("hotkey-list"), currentBindings, rerenderHotkeys, setHotkeyControlsDisabled);
 }
 
 async function refreshHotkeys(): Promise<void> {
   currentBindings = await invoke<HotkeyBinding[]>("get_hotkeys");
-  renderHotkeyList(el("hotkey-list"), currentBindings, rerenderHotkeys);
+  renderHotkeyList(el("hotkey-list"), currentBindings, rerenderHotkeys, setHotkeyControlsDisabled);
 }
 
 async function refreshHotkeyErrors(): Promise<void> {

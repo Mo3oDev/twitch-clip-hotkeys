@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::collections::HashMap;
 use std::sync::{Arc, Mutex as StdMutex};
 
 use tauri::Manager;
@@ -33,7 +33,7 @@ pub fn run() {
     })));
     let tokens = Arc::new(TokioMutex::new(cached_tokens));
     let user_login = Arc::new(StdMutex::new(None::<String>));
-    let in_flight = Arc::new(TokioMutex::new(HashSet::new()));
+    let cooldowns = Arc::new(TokioMutex::new(HashMap::<String, chrono::DateTime<chrono::Utc>>::new()));
     let http = reqwest::Client::builder()
         .connect_timeout(std::time::Duration::from_secs(5))
         .timeout(std::time::Duration::from_secs(15))
@@ -96,7 +96,7 @@ pub fn run() {
         .plugin(tauri_plugin_store::Builder::new().build())
         .plugin(tauri_plugin_notification::init())
         .plugin(
-            hotkeys::build_plugin(ops, session.clone(), bindings.clone(), in_flight).build(),
+            hotkeys::build_plugin(ops, session.clone(), bindings.clone(), cooldowns).build(),
         )
         .plugin(tauri_plugin_opener::init())
         .manage(app_state)

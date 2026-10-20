@@ -77,7 +77,9 @@ pub fn build_plugin<O, R>(
     ops: std::sync::Arc<O>,
     session: std::sync::Arc<std::sync::Mutex<Option<ActiveSession>>>,
     bindings: std::sync::Arc<std::sync::Mutex<Vec<HotkeyBinding>>>,
-    in_flight: std::sync::Arc<tokio::sync::Mutex<std::collections::HashSet<String>>>,
+    cooldowns: std::sync::Arc<
+        tokio::sync::Mutex<std::collections::HashMap<String, chrono::DateTime<chrono::Utc>>>,
+    >,
 ) -> tauri_plugin_global_shortcut::Builder<R>
 where
     O: HelixOps + Send + Sync + 'static,
@@ -118,7 +120,7 @@ where
         log::info!("hotkey '{}' pressed, requesting clip", binding.label);
 
         let ops = ops.clone();
-        let in_flight = in_flight.clone();
+        let cooldowns = cooldowns.clone();
         let app = app.clone();
         tauri::async_runtime::spawn(async move {
             let outcome = clip_flow::execute_clip_request(
@@ -127,19 +129,18 @@ where
                 &active.editor_id,
                 &binding,
                 chrono::Utc::now(),
-                &in_flight,
+                &cooldowns,
             )
             .await;
 
-            // The in-flight debounce (Task 8) reports a rejected duplicate
-            // press the same way as any other failure — `Failed("already
-            // in flight")`. A rapid double-press is the expected, successful
-            // case (one clip, one notification, from the press that won the
-            // race), not an error; the second press should be silent rather
-            // than show a misleading "couldn't create clip" toast.
-            if matches!(&outcome, clip_flow::ClipOutcome::Failed(msg) if msg == "already in flight")
-            {
-                log::debug!("hotkey '{}' debounced (already in flight)", binding.label);
+            // The cooldown reports a rejected repeat press the same way as
+            // any other failure — `Failed("cooldown")`. A rapid double-press
+            // is the expected, successful case (one clip, one notification,
+            // from the press that won the race), not an error; later presses
+            // within the cooldown window should stay silent rather than show
+            // a misleading "couldn't create clip" toast.
+            if matches!(&outcome, clip_flow::ClipOutcome::Failed(msg) if msg == "cooldown") {
+                log::debug!("hotkey '{}' rejected: still in cooldown", binding.label);
                 return;
             }
 

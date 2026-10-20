@@ -25,6 +25,8 @@ duration via global hotkeys — no browser, no leaving the game.
   `%APPDATA%/<id>/logs/*.log` for post-mortem debugging (release builds have
   no console). Tokens are never logged — only ids, outcomes, error kinds.
 
+Built with AI pair-programming assistance.
+
 ## Prerequisites
 
 - Windows 10/11 (this app only targets `x86_64-pc-windows-msvc`; it cannot
@@ -54,6 +56,11 @@ it for "Abrir ajustes" / "Salir".
 On first run, open Settings from the tray and paste your Twitch app's
 Client ID, then "Conectar con Twitch" to run the Device Code login.
 
+## Download
+
+Grab the latest installer from the [Releases](../../releases) page — no
+build step needed.
+
 ## Building a release installer
 
 ```powershell
@@ -68,7 +75,7 @@ Windows SmartScreen may warn on first run ("More info" → "Run anyway").
 
 v1 is intentionally minimal: hotkeys, configurable duration, OAuth, clip
 creation, non-blocking notifications, and a tray settings UI. No local clip
-history and no autostart with Windows — see the spec for the full rationale.
+history and no autostart with Windows.
 
 ## License
 

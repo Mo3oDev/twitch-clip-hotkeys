@@ -82,7 +82,11 @@ export function defaultBinding(): HotkeyBinding {
 // structural re-render, must cancel a stale listener rather than leak it.
 let activeCaptureCleanup: (() => void) | null = null;
 
-function beginComboCapture(button: HTMLButtonElement, onCaptured: (modifiers: string[], code: string) => void): void {
+function beginComboCapture(
+  button: HTMLButtonElement,
+  onCaptured: (modifiers: string[], code: string) => void,
+  onEnd: () => void,
+): void {
   activeCaptureCleanup?.();
 
   const onKeyDown = (event: KeyboardEvent) => {
@@ -111,6 +115,7 @@ function beginComboCapture(button: HTMLButtonElement, onCaptured: (modifiers: st
     window.removeEventListener("keydown", onKeyDown, true);
     button.classList.remove("capturing");
     activeCaptureCleanup = null;
+    onEnd();
   };
 
   const cancel = () => {
@@ -133,14 +138,26 @@ function beginComboCapture(button: HTMLButtonElement, onCaptured: (modifiers: st
  * now only mutate the array; `onStructuralChange` fires only for add/remove,
  * which do need a re-render. The caller is responsible for calling
  * `save_hotkeys` explicitly (a "Save" button), not on every edit.
+ *
+ * `onCapturingChange` fires true/false around a combo capture so the
+ * caller can disable "+ Add hotkey" / "Save hotkeys" while it's active —
+ * otherwise those stayed clickable mid-capture, letting the user add more
+ * rows (or save) while one combo was still pending.
  */
 export function renderHotkeyList(
   container: HTMLElement,
   bindings: HotkeyBinding[],
   onStructuralChange: (bindings: HotkeyBinding[]) => void,
+  onCapturingChange: (capturing: boolean) => void,
 ): void {
   activeCaptureCleanup?.();
+  onCapturingChange(false);
   container.textContent = "";
+
+  // Every remove/combo button across all rows — disabled as a group while
+  // any one row is capturing, so editing elsewhere can't race a pending
+  // combo capture.
+  const allRowButtons: HTMLButtonElement[] = [];
 
   // Two stacked lines per binding, not one 5-wide inline row — at the
   // settings window's fixed (non-resizable) width, five inline inputs
@@ -179,6 +196,7 @@ export function renderHotkeyList(
     removeBtn.addEventListener("click", () => {
       onStructuralChange(bindings.filter((_, i) => i !== index));
     });
+    allRowButtons.push(removeBtn);
 
     topLine.append(labelInput, durationInput, durationSuffix, removeBtn);
 
@@ -195,16 +213,27 @@ export function renderHotkeyList(
       comboBtn.dataset.combo = label;
     };
     refreshComboLabel();
+    allRowButtons.push(comboBtn);
     comboBtn.addEventListener("click", () => {
       if (comboBtn.classList.contains("capturing")) {
         activeCaptureCleanup?.();
         return;
       }
-      beginComboCapture(comboBtn, (modifiers, code) => {
-        binding.modifiers = modifiers;
-        binding.code = code;
-        refreshComboLabel();
-      });
+      const others = allRowButtons.filter((b) => b !== comboBtn);
+      others.forEach((b) => (b.disabled = true));
+      onCapturingChange(true);
+      beginComboCapture(
+        comboBtn,
+        (modifiers, code) => {
+          binding.modifiers = modifiers;
+          binding.code = code;
+          refreshComboLabel();
+        },
+        () => {
+          others.forEach((b) => (b.disabled = false));
+          onCapturingChange(false);
+        },
+      );
     });
 
     bottomLine.append(comboBtn);
