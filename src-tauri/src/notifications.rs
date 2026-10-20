@@ -17,39 +17,39 @@ pub fn message_for_outcome(outcome: &ClipOutcome) -> NotificationContent {
         ClipOutcome::VodSuccess {
             duration_seconds, ..
         } => content(
-            &format!("Clip creado ({duration_seconds}s)"),
-            &format!("Clip exacto de {duration_seconds}s listo en tu canal."),
+            &format!("Clip created ({duration_seconds}s)"),
+            &format!("Exact {duration_seconds}s clip ready on your channel."),
         ),
         ClipOutcome::FallbackSuccess { .. } => content(
-            "Clip creado (duración aproximada)",
-            "Se usó el método alterno; la duración exacta no se pudo garantizar. Revisa/edita el clip si quieres ajustarlo.",
+            "Clip created (approximate duration)",
+            "Used the fallback method; the exact duration couldn't be guaranteed. Review/edit the clip if you want to adjust it.",
         ),
         ClipOutcome::Offline => content(
-            "Clip no creado",
-            "El stream está offline, no se puede clipear.",
+            "Clip not created",
+            "The stream is offline, can't create a clip.",
         ),
         ClipOutcome::Failed(_) => content(
-            "No se pudo crear el clip",
-            "Error de conexión con Twitch. Intenta de nuevo en unos segundos.",
+            "Couldn't create the clip",
+            "Connection error with Twitch. Try again in a few seconds.",
         ),
         ClipOutcome::StillProcessing { .. } => content(
-            "Clip en proceso",
-            "Twitch está procesando el clip; puede tardar un poco más en aparecer.",
+            "Clip processing",
+            "Twitch is still processing the clip; it may take a bit longer to show up.",
         ),
     }
 }
 
 pub fn message_not_connected() -> NotificationContent {
     content(
-        "Twitch no conectado",
-        "Abre Ajustes y conecta tu cuenta para usar los clips.",
+        "Twitch not connected",
+        "Open Settings and connect your account to use clips.",
     )
 }
 
 pub fn message_session_expired() -> NotificationContent {
     content(
-        "Reconexión necesaria",
-        "Tu sesión de Twitch expiró. Abre Ajustes para reconectar.",
+        "Reconnection needed",
+        "Your Twitch session expired. Open Settings to reconnect.",
     )
 }
 
@@ -59,8 +59,8 @@ pub fn message_session_expired() -> NotificationContent {
 /// run can otherwise read as "the app won't close."
 pub fn message_tray_hint() -> NotificationContent {
     content(
-        "Minimizado a la bandeja",
-        "Twitch Clip Hotkeys sigue activo. Click derecho en el ícono para salir.",
+        "Minimized to tray",
+        "Twitch Clip Hotkeys is still active. Right-click the icon to quit.",
     )
 }
 
@@ -73,10 +73,10 @@ mod tests {
     #[test]
     fn tray_hint_message() {
         let content = message_tray_hint();
-        assert_eq!(content.title, "Minimizado a la bandeja");
+        assert_eq!(content.title, "Minimized to tray");
         assert_eq!(
             content.body,
-            "Twitch Clip Hotkeys sigue activo. Click derecho en el ícono para salir."
+            "Twitch Clip Hotkeys is still active. Right-click the icon to quit."
         );
     }
 
@@ -94,35 +94,35 @@ mod tests {
             duration_seconds: 30,
         };
         let content = super::message_for_outcome(&outcome);
-        assert_eq!(content.title, "Clip creado (30s)");
-        assert_eq!(content.body, "Clip exacto de 30s listo en tu canal.");
+        assert_eq!(content.title, "Clip created (30s)");
+        assert_eq!(content.body, "Exact 30s clip ready on your channel.");
     }
 
     #[test]
     fn fallback_success_message() {
         let outcome = ClipOutcome::FallbackSuccess { clip: clip() };
         let content = super::message_for_outcome(&outcome);
-        assert_eq!(content.title, "Clip creado (duración aproximada)");
+        assert_eq!(content.title, "Clip created (approximate duration)");
         assert_eq!(
             content.body,
-            "Se usó el método alterno; la duración exacta no se pudo garantizar. Revisa/edita el clip si quieres ajustarlo."
+            "Used the fallback method; the exact duration couldn't be guaranteed. Review/edit the clip if you want to adjust it."
         );
     }
 
     #[test]
     fn offline_message() {
         let content = super::message_for_outcome(&ClipOutcome::Offline);
-        assert_eq!(content.title, "Clip no creado");
-        assert_eq!(content.body, "El stream está offline, no se puede clipear.");
+        assert_eq!(content.title, "Clip not created");
+        assert_eq!(content.body, "The stream is offline, can't create a clip.");
     }
 
     #[test]
     fn failed_message() {
         let content = super::message_for_outcome(&ClipOutcome::Failed("boom".to_string()));
-        assert_eq!(content.title, "No se pudo crear el clip");
+        assert_eq!(content.title, "Couldn't create the clip");
         assert_eq!(
             content.body,
-            "Error de conexión con Twitch. Intenta de nuevo en unos segundos."
+            "Connection error with Twitch. Try again in a few seconds."
         );
     }
 
@@ -131,30 +131,30 @@ mod tests {
         let content = super::message_for_outcome(&ClipOutcome::StillProcessing {
             clip_id: "c1".to_string(),
         });
-        assert_eq!(content.title, "Clip en proceso");
+        assert_eq!(content.title, "Clip processing");
         assert_eq!(
             content.body,
-            "Twitch está procesando el clip; puede tardar un poco más en aparecer."
+            "Twitch is still processing the clip; it may take a bit longer to show up."
         );
     }
 
     #[test]
     fn not_connected_message() {
         let content = super::message_not_connected();
-        assert_eq!(content.title, "Twitch no conectado");
+        assert_eq!(content.title, "Twitch not connected");
         assert_eq!(
             content.body,
-            "Abre Ajustes y conecta tu cuenta para usar los clips."
+            "Open Settings and connect your account to use clips."
         );
     }
 
     #[test]
     fn session_expired_message() {
         let content = super::message_session_expired();
-        assert_eq!(content.title, "Reconexión necesaria");
+        assert_eq!(content.title, "Reconnection needed");
         assert_eq!(
             content.body,
-            "Tu sesión de Twitch expiró. Abre Ajustes para reconectar."
+            "Your Twitch session expired. Open Settings to reconnect."
         );
     }
 }

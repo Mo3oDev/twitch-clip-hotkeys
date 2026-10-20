@@ -116,7 +116,7 @@ pub fn run() {
             // The settings window is the app's only window; Tauri's default
             // is to quit when the last window closes, which would kill the
             // hotkey listener mid-stream. Hide it instead — the tray's
-            // "Abrir ajustes" / left-click brings it back (`tray.rs`).
+            // "Open settings" / left-click brings it back (`tray.rs`).
             if let Some(window) = app.get_webview_window("settings") {
                 let window_handle = window.clone();
                 let app_handle = app.handle().clone();

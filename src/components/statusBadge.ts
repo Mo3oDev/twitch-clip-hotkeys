@@ -8,7 +8,7 @@ export function renderStatusBadge(container: HTMLElement, status: AuthStatus): v
   const badge = document.createElement("span");
   badge.className = status.connected ? "badge badge-connected" : "badge badge-disconnected";
   badge.textContent = status.connected
-    ? `Conectado${status.login ? ` como ${status.login}` : ""}`
-    : "Desconectado";
+    ? `Connected${status.login ? ` as ${status.login}` : ""}`
+    : "Disconnected";
   container.appendChild(badge);
 }

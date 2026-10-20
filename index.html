@@ -1,45 +1,45 @@
 <!doctype html>
-<html lang="es">
+<html lang="en">
   <head>
     <meta charset="UTF-8" />
     <link rel="stylesheet" href="/src/styles.css" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Twitch Clip Hotkeys — Ajustes</title>
+    <title>Twitch Clip Hotkeys — Settings</title>
     <script type="module" src="/src/main.ts" defer></script>
   </head>
 
   <body>
     <main class="container">
       <section class="panel">
-        <h2>Cuenta de Twitch</h2>
+        <h2>Twitch Account</h2>
         <div class="row">
           <label for="client-id">Client ID</label>
-          <input id="client-id" placeholder="Pega aquí el client_id de tu app" />
-          <button id="save-client-id">Guardar</button>
+          <input id="client-id" placeholder="Paste your app's client_id here" />
+          <button id="save-client-id">Save</button>
           <span id="client-id-status" class="hint hidden"></span>
         </div>
         <p class="hint">
-          Registra una app tipo <strong>Public</strong> (sin secret) en
+          Register a <strong>Public</strong> app (no secret) at
           <a href="https://dev.twitch.tv/console" id="dev-console-link" rel="noreferrer">dev.twitch.tv/console</a>.
         </p>
         <p class="hint">
-          Si ya estabas conectado antes de esta versión, desconectá y volvé a
-          conectar: así habilitás el anuncio automático del clip en el chat.
+          If you connected before this version, disconnect and reconnect to
+          enable automatic chat announcements for new clips.
         </p>
         <div id="status-badge"></div>
         <div class="row">
-          <button id="connect-btn">Conectar con Twitch</button>
-          <button id="disconnect-btn">Desconectar</button>
+          <button id="connect-btn">Connect to Twitch</button>
+          <button id="disconnect-btn">Disconnect</button>
         </div>
         <p id="user-code-line" class="hint hidden"></p>
       </section>
 
       <section class="panel">
-        <h2>Atajos</h2>
+        <h2>Hotkeys</h2>
         <div id="hotkey-list"></div>
         <div class="row">
-          <button id="add-hotkey-btn">+ Agregar atajo</button>
-          <button id="save-hotkeys-btn">Guardar atajos</button>
+          <button id="add-hotkey-btn">+ Add hotkey</button>
+          <button id="save-hotkeys-btn">Save hotkeys</button>
         </div>
         <p id="hotkey-error" class="error hidden"></p>
         <p id="hotkey-save-status" class="hint hidden"></p>
@@ -47,8 +47,8 @@
       </section>
 
       <section class="panel">
-        <h2>Diagnóstico</h2>
-        <p id="diagnostic-line" class="hint">Sin actividad todavía.</p>
+        <h2>Diagnostics</h2>
+        <p id="diagnostic-line" class="hint">No activity yet.</p>
       </section>
     </main>
   </body>

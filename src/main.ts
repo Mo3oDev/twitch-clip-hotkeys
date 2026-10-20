@@ -44,7 +44,7 @@ async function refreshHotkeyErrors(): Promise<void> {
     return;
   }
   line.textContent =
-    "No se pudieron registrar estos atajos (combinación en uso por otra app): " +
+    "Couldn't register these hotkeys (combo already in use by another app): " +
     errors.map((e) => `${e.label} (${e.message})`).join("; ");
   line.classList.remove("hidden");
 }
@@ -67,7 +67,7 @@ async function saveCurrentHotkeys(): Promise<void> {
   try {
     await invoke("save_hotkeys", { bindings: currentBindings });
     errorLine.classList.add("hidden");
-    statusLine.textContent = "Guardado.";
+    statusLine.textContent = "Saved.";
     statusLine.classList.remove("hidden");
   } catch (err) {
     errorLine.textContent = String(err);
@@ -86,7 +86,7 @@ function setDiagnostic(text: string, url?: string): void {
   line.append(`${text} `);
   const link = document.createElement("a");
   link.href = url;
-  link.textContent = "Ver clip";
+  link.textContent = "View clip";
   // A plain <a target="_blank"> never navigates inside the Tauri webview —
   // there's no browser chrome to open a new tab in. `openUrl` is the
   // documented way to hand a link to the OS's default browser instead.
@@ -107,27 +107,27 @@ function describeClipOutcome(outcome: { type: string; data?: unknown }): {
     case "VodSuccess": {
       const data = outcome.data as { clip: ClipRef; duration_seconds: number };
       return {
-        text: `Clip creado (${data.duration_seconds}s, duración exacta).`,
+        text: `Clip created (${data.duration_seconds}s, exact duration).`,
         url: data.clip.edit_url,
       };
     }
     case "FallbackSuccess": {
       const data = outcome.data as { clip: ClipRef };
       return {
-        text: "Clip creado (duración aproximada, método alterno).",
+        text: "Clip created (approximate duration, fallback method).",
         url: data.clip.edit_url,
       };
     }
     case "StillProcessing":
-      return { text: "Clip en proceso, puede tardar un poco más en aparecer." };
+      return { text: "Clip is processing, it may take a bit longer to show up." };
     case "Offline":
-      return { text: "El stream está offline, no se creó ningún clip." };
+      return { text: "The stream is offline, no clip was created." };
     case "Failed": {
       const message = outcome.data as string;
-      return { text: `Último error: ${message}` };
+      return { text: `Last error: ${message}` };
     }
     default:
-      return { text: "Evento de clip desconocido." };
+      return { text: "Unknown clip event." };
   }
 }
 
@@ -149,7 +149,7 @@ window.addEventListener("DOMContentLoaded", async () => {
     const status = el("client-id-status");
     try {
       await invoke("set_client_id", { id });
-      status.textContent = "Guardado.";
+      status.textContent = "Saved.";
       status.classList.remove("hidden");
     } catch (err) {
       status.textContent = `Error: ${String(err)}`;
@@ -166,13 +166,13 @@ window.addEventListener("DOMContentLoaded", async () => {
     // truth for the final disabled state on both buttons, whether login
     // succeeded, failed, or timed out.
     btn.disabled = true;
-    btn.textContent = "Conectando...";
+    btn.textContent = "Connecting...";
     try {
       await invoke("auth_login");
     } catch (err) {
-      setDiagnostic(`No se pudo conectar: ${String(err)}`);
+      setDiagnostic(`Couldn't connect: ${String(err)}`);
     } finally {
-      btn.textContent = "Conectar con Twitch";
+      btn.textContent = "Connect to Twitch";
       await refreshStatus();
     }
   });
@@ -195,7 +195,7 @@ window.addEventListener("DOMContentLoaded", async () => {
 
   await listen<string>("auth:user_code", (event) => {
     const line = el("user-code-line");
-    line.textContent = `Código de verificación: ${event.payload} (se abrió en tu navegador)`;
+    line.textContent = `Verification code: ${event.payload} (opened in your browser)`;
     line.classList.remove("hidden");
   });
 
@@ -205,12 +205,12 @@ window.addEventListener("DOMContentLoaded", async () => {
   });
 
   await listen<string>("auth:timeout", (event) => {
-    setDiagnostic(`Conexión con Twitch falló: ${event.payload}`);
+    setDiagnostic(`Connection to Twitch failed: ${event.payload}`);
     el("user-code-line").classList.add("hidden");
   });
 
   await listen("auth:required", () => {
-    setDiagnostic("Twitch no conectado. Abre Ajustes y conecta tu cuenta.");
+    setDiagnostic("Twitch not connected. Open Settings and connect your account.");
   });
 
   await listen<{ type: string; data?: unknown }>("clip:result", (event) => {

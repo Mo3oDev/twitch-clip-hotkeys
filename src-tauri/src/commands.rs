@@ -167,7 +167,7 @@ pub fn save_hotkeys(
     if !unparseable.is_empty() {
         log::warn!("save_hotkeys: rejected unparseable bindings: {}", unparseable.join(", "));
         return Err(format!(
-            "atajos con tecla/modificador inválido: {}",
+            "hotkeys with an invalid key/modifier: {}",
             unparseable.join(", ")
         ));
     }
@@ -192,7 +192,7 @@ pub fn save_hotkeys(
     if !failed.is_empty() {
         log::warn!("save_hotkeys: registration failures: {}", failed.join("; "));
         return Err(format!(
-            "algunos atajos no se pudieron registrar: {}",
+            "some hotkeys couldn't be registered: {}",
             failed.join("; ")
         ));
     }

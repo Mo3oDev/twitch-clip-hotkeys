@@ -14,17 +14,17 @@ const KNOWN_MODIFIERS = ["Control", "Alt", "Shift", "Super"];
 export function validateClientSide(bindings: HotkeyBinding[]): string | null {
   for (const b of bindings) {
     if (b.duration_seconds < 5 || b.duration_seconds > 60) {
-      return `"${b.label}": la duración debe estar entre 5 y 60 segundos.`;
+      return `"${b.label}": duration must be between 5 and 60 seconds.`;
     }
     if (b.modifiers.length === 0) {
-      return `"${b.label}": necesita al menos un modificador (Ctrl/Alt/Shift).`;
+      return `"${b.label}": needs at least one modifier (Ctrl/Alt/Shift).`;
     }
   }
   const seen = new Map<string, string>();
   for (const b of bindings) {
     const key = [...b.modifiers].sort().join("+") + "|" + b.code;
     if (seen.has(key)) {
-      return `"${seen.get(key)}" y "${b.label}" usan la misma combinación.`;
+      return `"${seen.get(key)}" and "${b.label}" use the same combo.`;
     }
     seen.set(key, b.label);
   }
@@ -53,7 +53,7 @@ export function defaultBinding(): HotkeyBinding {
  * `<input>` each keystroke and persisted half-typed bindings. Field edits
  * now only mutate the array; `onStructuralChange` fires only for add/remove,
  * which do need a re-render. The caller is responsible for calling
- * `save_hotkeys` explicitly (a "Guardar" button), not on every edit.
+ * `save_hotkeys` explicitly (a "Save" button), not on every edit.
  */
 export function renderHotkeyList(
   container: HTMLElement,
@@ -75,7 +75,7 @@ export function renderHotkeyList(
 
     const labelInput = document.createElement("input");
     labelInput.value = binding.label;
-    labelInput.placeholder = "Etiqueta";
+    labelInput.placeholder = "Label";
     labelInput.addEventListener("input", () => {
       binding.label = labelInput.value;
     });
@@ -85,7 +85,7 @@ export function renderHotkeyList(
     durationInput.min = "5";
     durationInput.max = "60";
     durationInput.value = String(binding.duration_seconds);
-    durationInput.title = "Duración en segundos (5-60)";
+    durationInput.title = "Duration in seconds (5-60)";
     durationInput.addEventListener("input", () => {
       binding.duration_seconds = Number(durationInput.value) || 0;
     });
@@ -95,7 +95,7 @@ export function renderHotkeyList(
     durationSuffix.textContent = "s";
 
     const removeBtn = document.createElement("button");
-    removeBtn.textContent = "Eliminar";
+    removeBtn.textContent = "Remove";
     removeBtn.addEventListener("click", () => {
       onStructuralChange(bindings.filter((_, i) => i !== index));
     });
@@ -107,8 +107,8 @@ export function renderHotkeyList(
 
     const modifiersInput = document.createElement("input");
     modifiersInput.value = binding.modifiers.join("+");
-    modifiersInput.placeholder = `Modificadores (${KNOWN_MODIFIERS.join("/")})`;
-    modifiersInput.title = `Separados por "+", p. ej. Control+Alt`;
+    modifiersInput.placeholder = `Modifiers (${KNOWN_MODIFIERS.join("/")})`;
+    modifiersInput.title = `Separated by "+", e.g. Control+Alt`;
     modifiersInput.addEventListener("input", () => {
       binding.modifiers = modifiersInput.value
         .split("+")
@@ -118,7 +118,7 @@ export function renderHotkeyList(
 
     const codeInput = document.createElement("input");
     codeInput.value = binding.code;
-    codeInput.placeholder = "Código (p. ej. Digit1)";
+    codeInput.placeholder = "Code (e.g. Digit1)";
     codeInput.addEventListener("input", () => {
       binding.code = codeInput.value;
     });

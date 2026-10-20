@@ -5,8 +5,8 @@ use tauri::{
 };
 
 pub fn build_tray(app: &AppHandle) -> tauri::Result<()> {
-    let open_item = MenuItem::with_id(app, "open_settings", "Abrir ajustes", true, None::<&str>)?;
-    let exit_item = MenuItem::with_id(app, "exit", "Salir", true, None::<&str>)?;
+    let open_item = MenuItem::with_id(app, "open_settings", "Open settings", true, None::<&str>)?;
+    let exit_item = MenuItem::with_id(app, "exit", "Quit", true, None::<&str>)?;
     let menu = Menu::with_items(app, &[&open_item, &exit_item])?;
 
     TrayIconBuilder::new()
