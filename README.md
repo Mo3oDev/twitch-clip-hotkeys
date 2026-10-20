@@ -39,9 +39,10 @@ Built with AI pair-programming assistance.
     Code Flow, which never stores one).
   - Any OAuth Redirect URL (e.g. `http://localhost`) — required by the
     console to save the app, unused by Device Code Flow itself.
-  - Requests scopes `clips:edit` and `user:write:chat`. If you connected
-    before chat-announcing existed, disconnect and reconnect once to grant
-    the new scope — a cached token doesn't pick it up on its own.
+  - Requests scopes `clips:edit`, `channel:manage:clips`, and
+    `user:write:chat`. If you connected before any of these existed,
+    disconnect and reconnect once to grant the new scope(s) — a cached
+    token doesn't pick them up on its own.
 
 ## Development
 

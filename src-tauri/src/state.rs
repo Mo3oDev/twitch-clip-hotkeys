@@ -11,7 +11,7 @@ use crate::twitch::{ClipRef, CreateClipFromVodRequest, HelixClient, HelixError, 
 pub const KEYRING_SERVICE: &str = "twitch-clip-hotkeys";
 pub const AUTH_BASE_URL: &str = "https://id.twitch.tv";
 pub const HELIX_BASE_URL: &str = "https://api.twitch.tv";
-pub const SCOPES: &str = "clips:edit user:write:chat";
+pub const SCOPES: &str = "clips:edit channel:manage:clips user:write:chat";
 
 /// The real `HelixOps` impl (Task 8 deferred this adapter to whichever task
 /// first needs a non-fake implementation — that's this one). Holds the
