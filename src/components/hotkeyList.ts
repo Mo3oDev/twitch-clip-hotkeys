@@ -6,7 +6,38 @@ export interface HotkeyBinding {
   label: string;
 }
 
-const KNOWN_MODIFIERS = ["Control", "Alt", "Shift", "Super"];
+// DOM KeyboardEvent.code values are, by design, the same strings Tauri's
+// `Code` enum (keyboard-types) parses — no translation table needed, a
+// captured `event.code` is already a valid backend `code`.
+const MODIFIER_CODES = new Set([
+  "ControlLeft",
+  "ControlRight",
+  "AltLeft",
+  "AltRight",
+  "ShiftLeft",
+  "ShiftRight",
+  "MetaLeft",
+  "MetaRight",
+]);
+
+const MODIFIER_DISPLAY: Record<string, string> = {
+  Control: "Ctrl",
+  Alt: "Alt",
+  Shift: "Shift",
+  Super: "Win",
+};
+
+function displayCode(code: string): string {
+  if (code.startsWith("Digit")) return code.slice("Digit".length);
+  if (code.startsWith("Key")) return code.slice("Key".length);
+  return code;
+}
+
+function displayCombo(modifiers: string[], code: string): string {
+  const parts = modifiers.map((m) => MODIFIER_DISPLAY[m] ?? m);
+  parts.push(displayCode(code));
+  return parts.join("+");
+}
 
 /** Mirrors the backend's `validate_bindings` (Rust is still the source of
  * truth — this is a UX nicety so the user sees the problem before saving
@@ -45,6 +76,54 @@ export function defaultBinding(): HotkeyBinding {
   };
 }
 
+// A capture listens on `window` (so it fires regardless of which element
+// has focus) until a non-modifier key resolves the combo or Escape cancels
+// it. Only one can be active at a time; starting a new one, or any
+// structural re-render, must cancel a stale listener rather than leak it.
+let activeCaptureCleanup: (() => void) | null = null;
+
+function beginComboCapture(button: HTMLButtonElement, onCaptured: (modifiers: string[], code: string) => void): void {
+  activeCaptureCleanup?.();
+
+  const onKeyDown = (event: KeyboardEvent) => {
+    event.preventDefault();
+    event.stopPropagation();
+
+    const noModifierHeld = !event.ctrlKey && !event.altKey && !event.shiftKey && !event.metaKey;
+    if (event.code === "Escape" && noModifierHeld) {
+      cancel();
+      return;
+    }
+    // Still just holding a modifier down — wait for the actual key.
+    if (MODIFIER_CODES.has(event.code)) return;
+
+    const modifiers: string[] = [];
+    if (event.ctrlKey) modifiers.push("Control");
+    if (event.altKey) modifiers.push("Alt");
+    if (event.shiftKey) modifiers.push("Shift");
+    if (event.metaKey) modifiers.push("Super");
+
+    cleanup();
+    onCaptured(modifiers, event.code);
+  };
+
+  const cleanup = () => {
+    window.removeEventListener("keydown", onKeyDown, true);
+    button.classList.remove("capturing");
+    activeCaptureCleanup = null;
+  };
+
+  const cancel = () => {
+    cleanup();
+    button.textContent = button.dataset.combo ?? "";
+  };
+
+  window.addEventListener("keydown", onKeyDown, true);
+  button.classList.add("capturing");
+  button.textContent = "Press a key combo… (Esc to cancel)";
+  activeCaptureCleanup = cancel;
+}
+
 /**
  * Renders an editable list that mutates `bindings` **in place** as the user
  * types, without re-rendering on every keystroke. An earlier version called
@@ -60,6 +139,7 @@ export function renderHotkeyList(
   bindings: HotkeyBinding[],
   onStructuralChange: (bindings: HotkeyBinding[]) => void,
 ): void {
+  activeCaptureCleanup?.();
   container.textContent = "";
 
   // Two stacked lines per binding, not one 5-wide inline row — at the
@@ -105,25 +185,29 @@ export function renderHotkeyList(
     const bottomLine = document.createElement("div");
     bottomLine.className = "hotkey-row-line";
 
-    const modifiersInput = document.createElement("input");
-    modifiersInput.value = binding.modifiers.join("+");
-    modifiersInput.placeholder = `Modifiers (${KNOWN_MODIFIERS.join("/")})`;
-    modifiersInput.title = `Separated by "+", e.g. Control+Alt`;
-    modifiersInput.addEventListener("input", () => {
-      binding.modifiers = modifiersInput.value
-        .split("+")
-        .map((m) => m.trim())
-        .filter((m) => m.length > 0);
+    const comboBtn = document.createElement("button");
+    comboBtn.type = "button";
+    comboBtn.className = "hotkey-combo-btn";
+    comboBtn.title = "Click, then press the key combo you want";
+    const refreshComboLabel = () => {
+      const label = displayCombo(binding.modifiers, binding.code);
+      comboBtn.textContent = label;
+      comboBtn.dataset.combo = label;
+    };
+    refreshComboLabel();
+    comboBtn.addEventListener("click", () => {
+      if (comboBtn.classList.contains("capturing")) {
+        activeCaptureCleanup?.();
+        return;
+      }
+      beginComboCapture(comboBtn, (modifiers, code) => {
+        binding.modifiers = modifiers;
+        binding.code = code;
+        refreshComboLabel();
+      });
     });
 
-    const codeInput = document.createElement("input");
-    codeInput.value = binding.code;
-    codeInput.placeholder = "Code (e.g. Digit1)";
-    codeInput.addEventListener("input", () => {
-      binding.code = codeInput.value;
-    });
-
-    bottomLine.append(modifiersInput, codeInput);
+    bottomLine.append(comboBtn);
 
     row.append(topLine, bottomLine);
     container.appendChild(row);

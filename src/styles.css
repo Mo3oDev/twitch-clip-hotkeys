@@ -71,6 +71,11 @@
   margin-right: 4px;
 }
 
+.hotkey-combo-btn {
+  min-width: 160px;
+  text-align: left;
+}
+
 input,
 button {
   border-radius: 6px;
@@ -88,6 +93,12 @@ button {
 
 button:hover {
   border-color: #9147ff;
+}
+
+button.capturing {
+  border-color: #9147ff;
+  background-color: #f1e9ff;
+  color: #6b2fd6;
 }
 
 .hint {
@@ -151,5 +162,10 @@ button:hover {
 
   .hotkey-duration-suffix {
     color: #aaa;
+  }
+
+  button.capturing {
+    background-color: #2f2048;
+    color: #c9a8ff;
   }
 }
