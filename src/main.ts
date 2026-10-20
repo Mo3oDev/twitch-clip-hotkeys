@@ -75,28 +75,53 @@ async function saveCurrentHotkeys(): Promise<void> {
   await refreshHotkeyErrors();
 }
 
-function setDiagnostic(text: string): void {
-  el("diagnostic-line").textContent = text;
+function setDiagnostic(text: string, url?: string): void {
+  const line = el("diagnostic-line");
+  if (!url) {
+    line.textContent = text;
+    return;
+  }
+  line.textContent = "";
+  line.append(`${text} `);
+  const link = document.createElement("a");
+  link.href = url;
+  link.target = "_blank";
+  link.rel = "noreferrer";
+  link.textContent = "Ver clip";
+  line.append(link);
 }
 
-function describeClipOutcome(outcome: { type: string; data?: unknown }): string {
+type ClipRef = { id: string; edit_url: string };
+
+function describeClipOutcome(outcome: { type: string; data?: unknown }): {
+  text: string;
+  url?: string;
+} {
   switch (outcome.type) {
     case "VodSuccess": {
-      const data = outcome.data as { duration_seconds: number };
-      return `Clip creado (${data.duration_seconds}s, duración exacta).`;
+      const data = outcome.data as { clip: ClipRef; duration_seconds: number };
+      return {
+        text: `Clip creado (${data.duration_seconds}s, duración exacta).`,
+        url: data.clip.edit_url,
+      };
     }
-    case "FallbackSuccess":
-      return "Clip creado (duración aproximada, método alterno).";
+    case "FallbackSuccess": {
+      const data = outcome.data as { clip: ClipRef };
+      return {
+        text: "Clip creado (duración aproximada, método alterno).",
+        url: data.clip.edit_url,
+      };
+    }
     case "StillProcessing":
-      return "Clip en proceso, puede tardar un poco más en aparecer.";
+      return { text: "Clip en proceso, puede tardar un poco más en aparecer." };
     case "Offline":
-      return "El stream está offline, no se creó ningún clip.";
+      return { text: "El stream está offline, no se creó ningún clip." };
     case "Failed": {
       const message = outcome.data as string;
-      return `Último error: ${message}`;
+      return { text: `Último error: ${message}` };
     }
     default:
-      return "Evento de clip desconocido.";
+      return { text: "Evento de clip desconocido." };
   }
 }
 
@@ -178,6 +203,7 @@ window.addEventListener("DOMContentLoaded", async () => {
   });
 
   await listen<{ type: string; data?: unknown }>("clip:result", (event) => {
-    setDiagnostic(describeClipOutcome(event.payload));
+    const { text, url } = describeClipOutcome(event.payload);
+    setDiagnostic(text, url);
   });
 });

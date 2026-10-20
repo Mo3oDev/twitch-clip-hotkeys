@@ -118,11 +118,14 @@ pub fn run() {
             // hotkey listener mid-stream. Hide it instead — the tray's
             // "Abrir ajustes" / left-click brings it back (`tray.rs`).
             if let Some(window) = app.get_webview_window("settings") {
+                let window_handle = window.clone();
                 let app_handle = app.handle().clone();
                 let tray_hint_shown = tray_hint_shown.clone();
                 window.on_window_event(move |event| {
                     if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                         api.prevent_close();
+                        let _ = window_handle.hide();
+                        log::info!("settings window hidden on close request");
 
                         let mut shown = tray_hint_shown.lock().unwrap();
                         if !*shown {
