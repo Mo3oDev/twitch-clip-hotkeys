@@ -27,6 +27,39 @@ pub trait HelixOps {
         &self,
         clip_id: &str,
     ) -> impl std::future::Future<Output = Result<Option<ClipRef>, HelixError>> + Send;
+    fn send_chat_message(
+        &self,
+        broadcaster_id: &str,
+        message: &str,
+    ) -> impl std::future::Future<Output = Result<(), HelixError>> + Send;
+}
+
+/// Two random words keep every clip title distinct from both the stream's
+/// own title and from every other clip — Twitch doesn't generate one for
+/// the classic path at all, and reusing `binding.label` ("Clip 30s") for
+/// every single clip made titles useless for telling them apart later.
+const TITLE_WORDS: &[&str] = &[
+    "hunger", "ember", "frost", "nova", "quartz", "rogue", "storm", "echo", "pulse", "glitch",
+    "raid", "surge", "vortex", "blitz", "omen", "rift", "talon", "zephyr", "cobalt", "drift",
+    "point", "shadow", "flare", "ridge", "static", "tempo", "wraith", "crater", "haze", "signal",
+];
+
+fn generate_clip_title(duration_seconds: u8, rng: &mut impl rand::Rng) -> String {
+    let a = TITLE_WORDS[rng.random_range(0..TITLE_WORDS.len())];
+    let b = TITLE_WORDS[rng.random_range(0..TITLE_WORDS.len())];
+    format!("{a}-{b}-{duration_seconds}s")
+}
+
+/// Best-effort: a failed chat post never changes the clip outcome the user
+/// sees — the clip itself already succeeded, and chat is just an extra
+/// announcement, not something worth surfacing as an error (e.g. missing
+/// `user:write:chat` scope on an account that never re-connected after this
+/// scope was added).
+async fn post_clip_to_chat(ops: &impl HelixOps, broadcaster_id: &str, title: &str, clip: &ClipRef) {
+    let message = format!("🎬 {title}: {}", clip.edit_url);
+    if let Err(err) = ops.send_chat_message(broadcaster_id, &message).await {
+        log::warn!("failed to post clip link to chat: {err:?}");
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize)]
@@ -80,6 +113,8 @@ async fn execute_clip_request_inner(
     let usable_vod_offset = usable_vod(ops, broadcaster_id, &stream, binding, now)
         .await;
 
+    let title = generate_clip_title(binding.duration_seconds, &mut rand::rng());
+
     if let Some((vod, offset)) = usable_vod_offset {
         let req = CreateClipFromVodRequest {
             editor_id: editor_id.to_string(),
@@ -87,9 +122,10 @@ async fn execute_clip_request_inner(
             vod_id: vod.id,
             vod_offset: offset,
             duration_seconds: binding.duration_seconds,
-            title: format!("Clip {}s", binding.duration_seconds),
+            title: title.clone(),
         };
         if let Ok(clip) = ops.create_clip_from_vod(req).await {
+            post_clip_to_chat(ops, broadcaster_id, &title, &clip).await;
             return ClipOutcome::VodSuccess {
                 clip,
                 duration_seconds: binding.duration_seconds,
@@ -100,7 +136,13 @@ async fn execute_clip_request_inner(
     }
 
     match ops.create_clip_classic(broadcaster_id).await {
-        Ok(clip) => ClipOutcome::FallbackSuccess { clip },
+        Ok(clip) => {
+            // The classic endpoint has no `title` param at all — Twitch
+            // assigns its own name here regardless, so `title` only ends up
+            // in the chat message, not on the clip itself.
+            post_clip_to_chat(ops, broadcaster_id, &title, &clip).await;
+            ClipOutcome::FallbackSuccess { clip }
+        }
         Err(err) => ClipOutcome::Failed(format!("{err:?}")),
     }
 }
@@ -155,6 +197,7 @@ mod tests {
         create_clip_from_vod: usize,
         create_clip_classic: usize,
         get_clip: usize,
+        send_chat_message: usize,
     }
 
     struct FakeOps {
@@ -162,6 +205,7 @@ mod tests {
         vod: Result<Option<VodInfo>, HelixError>,
         vod_clip: Result<ClipRef, HelixError>,
         classic_clip: Result<ClipRef, HelixError>,
+        chat_message: StdMutex<Option<String>>,
         calls: StdMutex<FakeCalls>,
     }
 
@@ -183,6 +227,7 @@ mod tests {
                     id: "classic-clip".to_string(),
                     edit_url: "https://example.invalid/classic-clip".to_string(),
                 }),
+                chat_message: StdMutex::new(None),
                 calls: StdMutex::new(FakeCalls::default()),
             }
         }
@@ -215,6 +260,16 @@ mod tests {
         async fn get_clip(&self, _clip_id: &str) -> Result<Option<ClipRef>, HelixError> {
             self.calls.lock().unwrap().get_clip += 1;
             Ok(None)
+        }
+
+        async fn send_chat_message(
+            &self,
+            _broadcaster_id: &str,
+            message: &str,
+        ) -> Result<(), HelixError> {
+            self.calls.lock().unwrap().send_chat_message += 1;
+            *self.chat_message.lock().unwrap() = Some(message.to_string());
+            Ok(())
         }
     }
 
@@ -320,6 +375,59 @@ mod tests {
         let calls = ops.calls.lock().unwrap();
         assert_eq!(calls.create_clip_from_vod, 1);
         assert_eq!(calls.create_clip_classic, 0);
+        assert_eq!(calls.send_chat_message, 1);
+        assert!(ops
+            .chat_message
+            .lock()
+            .unwrap()
+            .as_ref()
+            .unwrap()
+            .contains("https://example.invalid/vod-clip"));
+    }
+
+    #[tokio::test]
+    async fn classic_fallback_success_also_posts_to_chat() {
+        let ops = FakeOps::default();
+        let outcome = run(&ops, &binding(30), "2026-10-19T18:00:10Z".parse().unwrap()).await;
+
+        assert_eq!(
+            outcome,
+            ClipOutcome::FallbackSuccess {
+                clip: ops.classic_clip.clone().unwrap()
+            }
+        );
+        assert_eq!(ops.calls.lock().unwrap().send_chat_message, 1);
+        assert!(ops
+            .chat_message
+            .lock()
+            .unwrap()
+            .as_ref()
+            .unwrap()
+            .contains("https://example.invalid/classic-clip"));
+    }
+
+    #[tokio::test]
+    async fn offline_stream_never_posts_to_chat() {
+        let mut ops = FakeOps::default();
+        ops.stream = Ok(None);
+
+        run(&ops, &binding(30), now()).await;
+
+        assert_eq!(ops.calls.lock().unwrap().send_chat_message, 0);
+    }
+
+    #[test]
+    fn generate_clip_title_has_two_words_and_duration_suffix() {
+        use rand::SeedableRng;
+        let mut rng = rand::rngs::StdRng::seed_from_u64(1);
+
+        let title = generate_clip_title(45, &mut rng);
+
+        assert!(title.ends_with("-45s"), "title was {title}");
+        let parts: Vec<&str> = title.split('-').collect();
+        assert_eq!(parts.len(), 3);
+        assert!(TITLE_WORDS.contains(&parts[0]));
+        assert!(TITLE_WORDS.contains(&parts[1]));
     }
 
     #[tokio::test]

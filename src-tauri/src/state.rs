@@ -11,7 +11,7 @@ use crate::twitch::{ClipRef, CreateClipFromVodRequest, HelixClient, HelixError, 
 pub const KEYRING_SERVICE: &str = "twitch-clip-hotkeys";
 pub const AUTH_BASE_URL: &str = "https://id.twitch.tv";
 pub const HELIX_BASE_URL: &str = "https://api.twitch.tv";
-pub const SCOPES: &str = "clips:edit";
+pub const SCOPES: &str = "clips:edit user:write:chat";
 
 /// The real `HelixOps` impl (Task 8 deferred this adapter to whichever task
 /// first needs a non-fake implementation — that's this one). Holds the
@@ -126,6 +126,19 @@ impl HelixOps for RealHelixOps {
             return Err(HelixError::Unauthorized);
         };
         let result = crate::twitch::clips::get_clip(&client, tok, clip_id).await;
+        let _ = crate::auth::token_store::save_tokens(KEYRING_SERVICE, tok);
+        result
+    }
+
+    async fn send_chat_message(&self, broadcaster_id: &str, message: &str) -> Result<(), HelixError> {
+        let client = self.client();
+        let mut guard = self.tokens.lock().await;
+        let Some(tok) = guard.as_mut() else {
+            return Err(HelixError::Unauthorized);
+        };
+        let result =
+            crate::twitch::chat::send_chat_message(&client, tok, broadcaster_id, broadcaster_id, message)
+                .await;
         let _ = crate::auth::token_store::save_tokens(KEYRING_SERVICE, tok);
         result
     }

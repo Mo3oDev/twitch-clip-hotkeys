@@ -21,7 +21,32 @@ impl HelixClient {
         path: &str,
         query: &[(&str, &str)],
     ) -> Result<serde_json::Value, HelixError> {
-        match self.send_once(tokens, method.clone(), path, query).await? {
+        self.send_with_retry(tokens, method, path, &|b| b.query(query))
+            .await
+    }
+
+    /// Like `request`, but for endpoints that take a JSON body instead of
+    /// query params (e.g. Send Chat Message) — Helix mixes both styles
+    /// across endpoints, so this isn't just `request` with an extra arg.
+    pub async fn request_json(
+        &self,
+        tokens: &mut crate::auth::TokenSet,
+        method: reqwest::Method,
+        path: &str,
+        body: &serde_json::Value,
+    ) -> Result<serde_json::Value, HelixError> {
+        self.send_with_retry(tokens, method, path, &|b| b.json(body))
+            .await
+    }
+
+    async fn send_with_retry(
+        &self,
+        tokens: &mut crate::auth::TokenSet,
+        method: reqwest::Method,
+        path: &str,
+        build: &(dyn Fn(reqwest::RequestBuilder) -> reqwest::RequestBuilder + Send + Sync),
+    ) -> Result<serde_json::Value, HelixError> {
+        match self.send_once(tokens, method.clone(), path, build).await? {
             Ok(value) => Ok(value),
             Err(()) => {
                 // First 401: refresh exactly once, then retry exactly once.
@@ -52,7 +77,7 @@ impl HelixClient {
                 refreshed.user_id = tokens.user_id.clone();
                 *tokens = refreshed;
 
-                match self.send_once(tokens, method, path, query).await? {
+                match self.send_once(tokens, method, path, build).await? {
                     Ok(value) => Ok(value),
                     Err(()) => Err(HelixError::Unauthorized),
                 }
@@ -67,14 +92,14 @@ impl HelixClient {
         tokens: &crate::auth::TokenSet,
         method: reqwest::Method,
         path: &str,
-        query: &[(&str, &str)],
+        build: &(dyn Fn(reqwest::RequestBuilder) -> reqwest::RequestBuilder + Send + Sync),
     ) -> Result<Result<serde_json::Value, ()>, HelixError> {
-        let response = self
+        let builder = self
             .http
             .request(method, format!("{}{}", self.base_url, path))
             .header("Client-Id", &self.client_id)
-            .header("Authorization", format!("Bearer {}", tokens.access_token))
-            .query(query)
+            .header("Authorization", format!("Bearer {}", tokens.access_token));
+        let response = build(builder)
             .send()
             .await
             .map_err(|e| HelixError::Network(e.to_string()))?;

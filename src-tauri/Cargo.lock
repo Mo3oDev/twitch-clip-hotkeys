@@ -5043,6 +5043,7 @@ dependencies = [
  "chrono",
  "keyring",
  "log",
+ "rand 0.9.5",
  "reqwest",
  "serde",
  "serde_json",
