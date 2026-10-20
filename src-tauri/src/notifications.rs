@@ -83,7 +83,7 @@ mod tests {
     fn clip() -> ClipRef {
         ClipRef {
             id: "c1".to_string(),
-            edit_url: "https://www.twitch.tv/d4ni_jr/clip/c1/edit".to_string(),
+            edit_url: "https://www.twitch.tv/twitchdev/clip/c1/edit".to_string(),
         }
     }
 
