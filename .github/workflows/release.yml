@@ -37,3 +37,4 @@ jobs:
           releaseName: "Twitch Clip Hotkeys ${{ github.ref_name }}"
           releaseDraft: true
           prerelease: false
+          generateReleaseNotes: true
