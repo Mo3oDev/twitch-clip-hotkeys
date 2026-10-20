@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
+import { openUrl } from "@tauri-apps/plugin-opener";
 import { renderStatusBadge, type AuthStatus } from "./components/statusBadge";
 import {
   renderHotkeyList,
@@ -85,9 +86,14 @@ function setDiagnostic(text: string, url?: string): void {
   line.append(`${text} `);
   const link = document.createElement("a");
   link.href = url;
-  link.target = "_blank";
-  link.rel = "noreferrer";
   link.textContent = "Ver clip";
+  // A plain <a target="_blank"> never navigates inside the Tauri webview —
+  // there's no browser chrome to open a new tab in. `openUrl` is the
+  // documented way to hand a link to the OS's default browser instead.
+  link.addEventListener("click", (event) => {
+    event.preventDefault();
+    void openUrl(url);
+  });
   line.append(link);
 }
 
@@ -126,6 +132,11 @@ function describeClipOutcome(outcome: { type: string; data?: unknown }): {
 }
 
 window.addEventListener("DOMContentLoaded", async () => {
+  el("dev-console-link").addEventListener("click", (event) => {
+    event.preventDefault();
+    void openUrl("https://dev.twitch.tv/console");
+  });
+
   await refreshStatus();
   await refreshHotkeys();
   await refreshHotkeyErrors();
